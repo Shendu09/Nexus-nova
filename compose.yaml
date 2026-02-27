@@ -1,0 +1,8 @@
+services:
+  localstack:
+    image: localstack/localstack:latest
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=logs,sns,sqs,events,cloudformation,iam,sts,dynamodb
+      - EAGER_SERVICE_LOADING=1

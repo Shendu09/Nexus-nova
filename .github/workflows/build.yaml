@@ -1,0 +1,96 @@
+name: Build and Publish
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+
+env:
+  PUBLIC_ECR_REGISTRY: public.ecr.aws
+  PUBLIC_ECR_REPO: flare
+  GHCR_IMAGE: ghcr.io/${{ github.repository_owner }}/flare
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install -e ".[dev]"
+      - run: ruff check src/ tests/
+      - run: ruff format --check src/ tests/
+      - run: mypy src/flare/
+      - run: pytest -v
+
+  publish-ghcr:
+    needs: test
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push to GHCR
+        run: |
+          docker build -t "$GHCR_IMAGE:${{ github.sha }}" .
+
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            docker tag "$GHCR_IMAGE:${{ github.sha }}" "$GHCR_IMAGE:pr-${{ github.event.number }}"
+            docker push "$GHCR_IMAGE:pr-${{ github.event.number }}"
+          fi
+
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+            docker tag "$GHCR_IMAGE:${{ github.sha }}" "$GHCR_IMAGE:$TAG"
+            docker tag "$GHCR_IMAGE:${{ github.sha }}" "$GHCR_IMAGE:latest"
+            docker push "$GHCR_IMAGE:$TAG"
+            docker push "$GHCR_IMAGE:latest"
+          fi
+
+  publish-ecr:
+    needs: test
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - uses: aws-actions/amazon-ecr-login@v2
+        id: ecr
+        with:
+          registry-type: public
+
+      - name: Build and push to ECR
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: |
+          IMAGE="$REGISTRY/$PUBLIC_ECR_REPO"
+          TAG="${GITHUB_REF#refs/tags/}"
+          docker build -t "$IMAGE:$TAG" .
+          docker tag "$IMAGE:$TAG" "$IMAGE:latest"
+          docker push "$IMAGE:$TAG"
+          docker push "$IMAGE:latest"
