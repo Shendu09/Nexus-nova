@@ -259,7 +259,7 @@ aws cloudformation deploy \
 
 Flare can call the on-call engineer by phone when an incident is detected, brief them on the root cause analysis, and support interactive voice investigation powered by Nova 2 Sonic.
 
-To enable the voice pipeline, add the Connect parameters to your deploy command:
+To enable the voice pipeline, add two parameters to your deploy command:
 
 ```bash
 aws cloudformation deploy \
@@ -273,21 +273,15 @@ aws cloudformation deploy \
     EnableAlarmTrigger=true \
     AlarmNamePrefix=prod- \
     ConnectEnabled=true \
-    ConnectInstanceId="your-connect-instance-id" \
-    ConnectContactFlowId="your-contact-flow-id" \
-    ConnectPhoneNumber="+12025551234" \
     OncallPhone="+15551234567"
 ```
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `ConnectEnabled` | `false` | Enable outbound voice calling |
-| `ConnectInstanceId` | `""` | Amazon Connect instance ID |
-| `ConnectContactFlowId` | `""` | Contact flow ID for outbound calls |
-| `ConnectPhoneNumber` | `""` | Claimed DID phone number (E.164 format, e.g., `+12025551234`) |
 | `OncallPhone` | `""` | On-call engineer's phone number (E.164 format) |
 
-The voice pipeline requires manual setup of an Amazon Connect instance, a phone number, a Lex V2 bot with Nova 2 Sonic speech-to-speech, and a contact flow. See the [Voice Setup Guide](voice-setup-guide.md) for detailed step-by-step instructions.
+The Amazon Connect instance, phone number, Lex V2 bot with Nova 2 Sonic, and contact flow are all provisioned automatically. The only prerequisite is enabling Nova model access in Bedrock. See the [Voice Setup Guide](voice-setup-guide.md) for details.
 
 The SNS notification is always sent regardless of whether the voice pipeline is enabled.
 
@@ -297,12 +291,4 @@ The SNS notification is always sent regardless of whether the voice pipeline is 
 aws cloudformation delete-stack --stack-name flare --region us-east-1
 ```
 
-This removes all Flare resources (Lambda, EventBridge rules, SNS topic, DynamoDB table, IAM roles). It does not affect your log groups or alarms.
-
-If you enabled the voice pipeline, also tear down the Connect instance to stop phone number charges:
-
-```bash
-aws connect delete-instance --instance-id "your-connect-instance-id" --region us-east-1
-```
-
-See the [Voice Setup Guide](voice-setup-guide.md#teardown) for full teardown instructions.
+This removes all Flare resources including the Connect instance, phone number, Lex bot, Lambda functions, DynamoDB table, and IAM roles. It does not affect your log groups or alarms.

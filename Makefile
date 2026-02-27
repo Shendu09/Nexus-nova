@@ -20,12 +20,9 @@ SUBSCRIPTION_FILTER ?=
 LOOKBACK_MINUTES ?=
 TOKEN_BUDGET     ?=
 
-# Voice (optional)
-CONNECT_ENABLED      ?=
-CONNECT_INSTANCE_ID  ?=
-CONNECT_FLOW_ID      ?=
-CONNECT_PHONE        ?=
-ONCALL_PHONE         ?=
+# Voice (optional -- provisions Connect + Lex automatically)
+CONNECT_ENABLED ?=
+ONCALL_PHONE    ?=
 
 define check_param
 $(if $($(1)),,$(error $(1) is required. Usage: make deploy $(1)=<value>))
@@ -63,15 +60,6 @@ endif
 ifneq ($(CONNECT_ENABLED),)
 	OVERRIDES += ConnectEnabled=$(CONNECT_ENABLED)
 endif
-ifneq ($(CONNECT_INSTANCE_ID),)
-	OVERRIDES += ConnectInstanceId=$(CONNECT_INSTANCE_ID)
-endif
-ifneq ($(CONNECT_FLOW_ID),)
-	OVERRIDES += ConnectContactFlowId=$(CONNECT_FLOW_ID)
-endif
-ifneq ($(CONNECT_PHONE),)
-	OVERRIDES += ConnectPhoneNumber=$(CONNECT_PHONE)
-endif
 ifneq ($(ONCALL_PHONE),)
 	OVERRIDES += OncallPhone=$(ONCALL_PHONE)
 endif
@@ -89,10 +77,7 @@ deploy:
 
 teardown:
 	aws cloudformation delete-stack --stack-name $(STACK_NAME) --region $(REGION)
-	@echo "Stack deletion initiated."
-ifneq ($(CONNECT_INSTANCE_ID),)
-	@echo "To also delete the Connect instance: aws connect delete-instance --instance-id $(CONNECT_INSTANCE_ID) --region $(REGION)"
-endif
+	@echo "Stack deletion initiated (includes Connect instance and Lex bot if voice was enabled)."
 
 test:
 	pytest -v

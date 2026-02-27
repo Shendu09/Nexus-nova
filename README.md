@@ -109,10 +109,7 @@ All configuration is via CloudFormation parameters, which become Lambda environm
 | `CordonWindowSize` | `4` | Lines per Cordon analysis window |
 | `CordonKNeighbors` | `5` | k-NN neighbors for anomaly scoring |
 | `BedrockRegion` | `us-east-1` | AWS region for Bedrock API calls |
-| `ConnectEnabled` | `false` | Enable outbound voice calling via Amazon Connect |
-| `ConnectInstanceId` | `""` | Amazon Connect instance ID |
-| `ConnectContactFlowId` | `""` | Contact flow ID for outbound calls |
-| `ConnectPhoneNumber` | `""` | Claimed DID phone number (E.164 format) |
+| `ConnectEnabled` | `false` | Enable outbound voice calling (auto-provisions Connect, Lex, phone number) |
 | `OncallPhone` | `""` | On-call engineer phone number (E.164 format) |
 
 ## Trigger Modes
