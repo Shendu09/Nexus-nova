@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "flare"
+version = "0.1.0"
+description = "AI-powered log triage for AWS using Cordon and Amazon Nova"
+requires-python = ">=3.12"
+license = "Apache-2.0"
+dependencies = [
+    "boto3",
+    "cordon",
+    "litellm",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "moto[logs,sns]",
+    "pytest-mock",
+    "mypy",
+    "boto3-stubs[logs,sns,bedrock-runtime]",
+    "types-tqdm",
+    "ruff",
+    "pre-commit",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.mypy]
+strict = true
+packages = ["flare"]
+mypy_path = "src"
+
+[[tool.mypy.overrides]]
+module = ["cordon.*", "litellm", "litellm.*"]
+ignore_missing_imports = true
+
+[tool.ruff]
+target-version = "py312"
+src = ["src"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "TCH"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
