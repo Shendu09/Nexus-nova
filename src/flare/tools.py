@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import time
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 import boto3
 
@@ -31,17 +31,19 @@ def query_metrics(
     end_time = datetime.now(tz=UTC)
     start_time = end_time - __import__("datetime").timedelta(minutes=period_minutes)
 
-    cw_dimensions = [{"Name": k, "Value": v} for k, v in dimensions.items()]
+    cw_dimensions: list[dict[str, str]] = [
+        {"Name": k, "Value": v} for k, v in dimensions.items()
+    ]
 
     try:
         response = cloudwatch_client.get_metric_statistics(
             Namespace=namespace,
             MetricName=metric_name,
-            Dimensions=cw_dimensions,
+            Dimensions=cast(Any, cw_dimensions),
             StartTime=start_time,
             EndTime=end_time,
             Period=max(period_minutes * 60 // 10, 60),
-            Statistics=[stat],
+            Statistics=cast(Any, [stat]),
         )
         datapoints = sorted(
             response.get("Datapoints", []),
