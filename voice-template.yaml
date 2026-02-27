@@ -26,6 +26,14 @@ Parameters:
     Type: CommaDelimitedList
     Description: Log group patterns (should match the base stack)
 
+  ConnectInstanceId:
+    Type: String
+    Default: ""
+    Description: Existing Connect instance ID (leave empty to create a new one)
+
+Conditions:
+  CreateConnectInstance: !Equals [!Ref ConnectInstanceId, ""]
+
 Resources:
 
   # --- DynamoDB (incident state + pre-fetched investigation cache) ---
@@ -93,8 +101,8 @@ Resources:
                 Action:
                   - bedrock:InvokeModel
                 Resource:
-                  - !Sub "arn:aws:bedrock:${BedrockRegion}::foundation-model/amazon.nova-*"
-                  - !Sub "arn:aws:bedrock:us.*::foundation-model/amazon.nova-*"
+                  - "arn:aws:bedrock:*::foundation-model/amazon.nova-*"
+                  - !Sub "arn:aws:bedrock:*:${AWS::AccountId}:inference-profile/*amazon.nova-*"
 
   FlareVoiceHandlerFunction:
     Type: AWS::Lambda::Function
@@ -104,8 +112,8 @@ Resources:
       Code:
         ImageUri: !Ref EcrImageUri
       Role: !GetAtt FlareVoiceHandlerRole.Arn
-      MemorySize: 512
-      Timeout: 10
+      MemorySize: 1024
+      Timeout: 30
       Environment:
         Variables:
           LOG_GROUP_PATTERNS: !Join [",", !Ref LogGroupPatterns]
@@ -124,6 +132,7 @@ Resources:
 
   FlareConnectInstance:
     Type: AWS::Connect::Instance
+    Condition: CreateConnectInstance
     Properties:
       IdentityManagementType: CONNECT_MANAGED
       InstanceAlias: !Sub "flare-${BaseStackName}"
@@ -134,7 +143,10 @@ Resources:
   FlarePhoneNumber:
     Type: AWS::Connect::PhoneNumber
     Properties:
-      TargetArn: !GetAtt FlareConnectInstance.Arn
+      TargetArn: !If
+        - CreateConnectInstance
+        - !GetAtt FlareConnectInstance.Arn
+        - !Sub "arn:aws:connect:${AWS::Region}:${AWS::AccountId}:instance/${ConnectInstanceId}"
       CountryCode: US
       Type: DID
       Description: Flare outbound calling
@@ -142,7 +154,10 @@ Resources:
   FlareLambdaAssociation:
     Type: AWS::Connect::IntegrationAssociation
     Properties:
-      InstanceId: !GetAtt FlareConnectInstance.Arn
+      InstanceId: !If
+        - CreateConnectInstance
+        - !GetAtt FlareConnectInstance.Arn
+        - !Sub "arn:aws:connect:${AWS::Region}:${AWS::AccountId}:instance/${ConnectInstanceId}"
       IntegrationType: LAMBDA_FUNCTION
       IntegrationArn: !GetAtt FlareVoiceHandlerFunction.Arn
 
@@ -152,7 +167,10 @@ Resources:
       - FlareLambdaAssociation
       - FlareBotAlias
     Properties:
-      InstanceArn: !GetAtt FlareConnectInstance.Arn
+      InstanceArn: !If
+        - CreateConnectInstance
+        - !GetAtt FlareConnectInstance.Arn
+        - !Sub "arn:aws:connect:${AWS::Region}:${AWS::AccountId}:instance/${ConnectInstanceId}"
       Name: !Sub "flare-incident-commander-${BaseStackName}"
       Type: CONTACT_FLOW
       Content: '{"Version":"2019-10-30","StartAction":"Disconnect","Actions":[{"Identifier":"Disconnect","Type":"DisconnectParticipant","Parameters":{},"Transitions":{}}]}'
@@ -328,7 +346,10 @@ Resources:
 Outputs:
   FlareConnectInstanceId:
     Description: Amazon Connect instance ID
-    Value: !GetAtt FlareConnectInstance.Id
+    Value: !If
+      - CreateConnectInstance
+      - !GetAtt FlareConnectInstance.Id
+      - !Ref ConnectInstanceId
 
   FlarePhoneNumber:
     Description: Claimed phone number (E.164)
@@ -352,4 +373,7 @@ Outputs:
 
   FlareConnectInstanceArn:
     Description: Connect instance ARN
-    Value: !GetAtt FlareConnectInstance.Arn
+    Value: !If
+      - CreateConnectInstance
+      - !GetAtt FlareConnectInstance.Arn
+      - !Sub "arn:aws:connect:${AWS::Region}:${AWS::AccountId}:instance/${ConnectInstanceId}"

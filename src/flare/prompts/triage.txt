@@ -28,10 +28,16 @@ NEXT STEPS:
 1. [actionable step]
 2. [actionable step]
 3. [actionable step]
+SPOKEN SUMMARY: [2-3 sentence conversational summary suitable for reading
+aloud over a phone call. Lead with what happened, then the likely cause.
+Do not include log lines, timestamps, or formatting. Speak as if briefing
+a colleague who just woke up.]
 
 If the logs look healthy with no actionable findings:
 
 STATUS: Healthy
 SUMMARY: [brief statement, e.g., "Normal operation across all monitored services."]
+SPOKEN SUMMARY: [same as SUMMARY, conversational tone]
 
-Keep your response concise. This will be delivered as a notification.
+Keep your response concise. The written fields will be delivered as a
+notification. The SPOKEN SUMMARY will be read aloud over a phone call.

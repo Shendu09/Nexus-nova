@@ -65,7 +65,7 @@ def briefing_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         rca = incident.get("rca", "")
         alarm_name = incident.get("alarm_name", "infrastructure")
         return {
-            "rca_summary": rca,
+            "rca_summary": _extract_spoken_summary(rca),
             "severity": _extract_severity(rca),
             "affected": alarm_name,
         }
@@ -90,6 +90,21 @@ def _extract_severity(rca: str) -> str:
             if status in ("CRITICAL", "HIGH", "MEDIUM", "LOW", "HEALTHY"):
                 return status.capitalize()
     return "Unknown"
+
+
+def _extract_spoken_summary(rca: str) -> str:
+    """Extract the SPOKEN SUMMARY field from the RCA for voice delivery.
+
+    Falls back to the SUMMARY field, then to a generic message if
+    neither is found.
+    """
+    for line in rca.splitlines():
+        if line.strip().startswith("SPOKEN SUMMARY:"):
+            return line.split(":", 1)[1].strip()
+    for line in rca.splitlines():
+        if line.strip().startswith("SUMMARY:"):
+            return line.split(":", 1)[1].strip()
+    return "An incident has been detected. Check your email for details."
 
 
 # ---------------------------------------------------------------------------

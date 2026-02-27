@@ -49,7 +49,10 @@ def sample_incident() -> dict[str, Any]:
             "STATUS: High\nSUMMARY: Connection pool exhaustion on auth-db.\n"
             "AFFECTED COMPONENTS: auth-service, api-gateway\n"
             "EVIDENCE:\n- Connection refused errors\n"
-            "NEXT STEPS:\n1. Check RDS connections\n2. Restart auth-service"
+            "NEXT STEPS:\n1. Check RDS connections\n2. Restart auth-service\n"
+            "SPOKEN SUMMARY: The auth database connection pool is exhausted."
+            " Error rates spiked on the API gateway about 8 minutes ago and"
+            " the auth service logs show repeated connection refused errors."
         ),
         "alarm_name": "HighErrorRate-APIGateway",
         "alarm_reason": "Threshold crossed: ErrorRate > 10%",

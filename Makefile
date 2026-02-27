@@ -21,7 +21,8 @@ LOOKBACK_MINUTES ?=
 TOKEN_BUDGET     ?=
 
 # Voice
-ONCALL_PHONE ?=
+ONCALL_PHONE         ?=
+CONNECT_INSTANCE_ID  ?=
 
 define check_param
 $(if $($(1)),,$(error $(1) is required. Usage: make deploy $(1)=<value>))
@@ -71,15 +72,18 @@ deploy:
 deploy-voice:
 	$(call check_param,ONCALL_PHONE)
 	$(call check_param,LOG_GROUP_PATTERNS)
+	$(eval VOICE_OVERRIDES := BaseStackName=$(STACK_NAME) OncallPhone=$(ONCALL_PHONE) LogGroupPatterns=$(LOG_GROUP_PATTERNS))
+ifneq ($(CONNECT_INSTANCE_ID),)
+	$(eval VOICE_OVERRIDES += ConnectInstanceId=$(CONNECT_INSTANCE_ID))
+endif
 	aws cloudformation deploy \
 		--template-file voice-template.yaml \
 		--stack-name $(STACK_NAME)-voice \
 		--region $(REGION) \
 		--capabilities CAPABILITY_IAM \
-		--parameter-overrides \
-			BaseStackName=$(STACK_NAME) \
-			OncallPhone=$(ONCALL_PHONE) \
-			LogGroupPatterns=$(LOG_GROUP_PATTERNS)
+		--parameter-overrides $(VOICE_OVERRIDES)
+	@echo "Warming up voice handler Lambda (cold start takes ~10s)..."
+	@aws lambda invoke --function-name flare-voice-$(STACK_NAME) --payload '{}' /dev/null --region $(REGION) 2>/dev/null || true
 	@echo "Configuring Lex bot fulfillment and Connect associations..."
 	@INSTANCE_ARN=$$(aws cloudformation describe-stacks --stack-name $(STACK_NAME)-voice --region $(REGION) \
 		--query 'Stacks[0].Outputs[?OutputKey==`FlareConnectInstanceArn`].OutputValue' --output text) && \

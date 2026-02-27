@@ -180,8 +180,8 @@ Resources:
                 Action:
                   - bedrock:InvokeModel
                 Resource:
-                  - !Sub "arn:aws:bedrock:${BedrockRegion}::foundation-model/amazon.nova-*"
-                  - !Sub "arn:aws:bedrock:us.*::foundation-model/amazon.nova-*"
+                  - "arn:aws:bedrock:*::foundation-model/amazon.nova-*"
+                  - !Sub "arn:aws:bedrock:*:${AWS::AccountId}:inference-profile/*amazon.nova-*"
         - PolicyName: FlareSNSPublish
           PolicyDocument:
             Version: "2012-10-17"
@@ -207,6 +207,15 @@ Resources:
                 Action:
                   - ssm:GetParameter
                 Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/flare/*"
+              - Effect: Allow
+                Action:
+                  - cloudwatch:GetMetricStatistics
+                  - cloudwatch:ListMetrics
+                  - lambda:GetFunction
+                  - ec2:DescribeInstanceStatus
+                  - ecs:DescribeServices
+                  - rds:DescribeDBInstances
+                Resource: "*"
 
   # --- Lambda ---
 

@@ -24,7 +24,8 @@ class TestBriefingHandler:
 
         result = briefing_handler(connect_briefing_event, None)
 
-        assert "Connection pool exhaustion" in result["rca_summary"]
+        assert "connection pool" in result["rca_summary"].lower()
+        assert "EVIDENCE" not in result["rca_summary"]
         assert result["severity"] == "High"
         assert result["affected"] == "HighErrorRate-APIGateway"
 
