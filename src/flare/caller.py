@@ -44,7 +44,5 @@ def start_voice_call(
         )
         return contact_id
     except Exception:
-        logger.exception(
-            "Failed to start outbound voice call for %s", incident_id
-        )
+        logger.exception("Failed to start outbound voice call for %s", incident_id)
         return None

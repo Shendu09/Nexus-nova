@@ -21,16 +21,22 @@ def trigger() -> TriggerInfo:
 
 
 def test_plan_parses_json(voice_config: FlareConfig, trigger: TriggerInfo, mocker):
-    plan_json = json.dumps({
-        "metrics": [
-            {"query_key": "RDS connections", "namespace": "AWS/RDS",
-             "metric_name": "DatabaseConnections",
-             "dimensions": {"DBInstanceIdentifier": "auth-db"},
-             "stat": "Average", "period_minutes": 60}
-        ],
-        "log_queries": [],
-        "status_checks": [],
-    })
+    plan_json = json.dumps(
+        {
+            "metrics": [
+                {
+                    "query_key": "RDS connections",
+                    "namespace": "AWS/RDS",
+                    "metric_name": "DatabaseConnections",
+                    "dimensions": {"DBInstanceIdentifier": "auth-db"},
+                    "stat": "Average",
+                    "period_minutes": 60,
+                }
+            ],
+            "log_queries": [],
+            "status_checks": [],
+        }
+    )
 
     mock_resp = Mock()
     mock_resp.choices = [Mock(message=Mock(content=plan_json))]
@@ -68,14 +74,22 @@ def test_plan_handles_invalid_json(
 def test_execute_runs_queries(
     voice_config: FlareConfig, prefetch_plan: dict[str, Any], mocker
 ):
-    mocker.patch("flare.tools.query_metrics", return_value={
-        "namespace": "AWS/RDS", "metric_name": "DatabaseConnections",
-        "datapoints": [{"timestamp": "2026-02-26T12:00:00", "value": 95}],
-    })
-    mocker.patch("flare.tools.query_logs", return_value={
-        "log_group": "/aws/lambda/auth-service",
-        "event_count": 5, "sample_lines": ["ERROR test"],
-    })
+    mocker.patch(
+        "flare.tools.query_metrics",
+        return_value={
+            "namespace": "AWS/RDS",
+            "metric_name": "DatabaseConnections",
+            "datapoints": [{"timestamp": "2026-02-26T12:00:00", "value": 95}],
+        },
+    )
+    mocker.patch(
+        "flare.tools.query_logs",
+        return_value={
+            "log_group": "/aws/lambda/auth-service",
+            "event_count": 5,
+            "sample_lines": ["ERROR test"],
+        },
+    )
 
     result = execute(prefetch_plan, voice_config)
     assert len(result["metrics"]) == 1
@@ -92,9 +106,13 @@ def test_execute_handles_empty_plan(voice_config: FlareConfig):
 def test_run_orchestrates_pipeline(
     voice_config: FlareConfig, trigger: TriggerInfo, mocker
 ):
-    plan_json = json.dumps({
-        "metrics": [], "log_queries": [], "status_checks": [],
-    })
+    plan_json = json.dumps(
+        {
+            "metrics": [],
+            "log_queries": [],
+            "status_checks": [],
+        }
+    )
     mock_resp = Mock()
     mock_resp.choices = [Mock(message=Mock(content=plan_json))]
     mocker.patch("litellm.completion", return_value=mock_resp)

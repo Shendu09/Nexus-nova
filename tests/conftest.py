@@ -90,8 +90,7 @@ def sample_incident() -> dict[str, Any]:
                     "sample_lines": [
                         "2026-02-26T11:52:00+00:00 ERROR "
                         "Connection refused from db pool",
-                        "2026-02-26T11:53:00+00:00 ERROR "
-                        "Connection pool exhausted",
+                        "2026-02-26T11:53:00+00:00 ERROR Connection pool exhausted",
                     ],
                 }
             ],

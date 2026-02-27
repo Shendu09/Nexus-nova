@@ -130,8 +130,7 @@ def fulfillment_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     except Exception:
         logger.exception("Reasoning failed for intent %s", intent_name)
         message = (
-            "I ran into an issue analyzing the data."
-            " Could you try asking that again?"
+            "I ran into an issue analyzing the data. Could you try asking that again?"
         )
 
     return {

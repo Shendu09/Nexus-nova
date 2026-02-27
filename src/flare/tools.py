@@ -51,11 +51,13 @@ def query_metrics(
         for dp in datapoints:
             ts = dp["Timestamp"]
             ts_str = ts.isoformat() if hasattr(ts, "isoformat") else str(ts)
-            serialized.append({
-                "timestamp": ts_str,
-                "value": dp.get(stat, 0),
-                "unit": dp.get("Unit", ""),
-            })
+            serialized.append(
+                {
+                    "timestamp": ts_str,
+                    "value": dp.get(stat, 0),
+                    "unit": dp.get("Unit", ""),
+                }
+            )
 
         return {
             "namespace": namespace,

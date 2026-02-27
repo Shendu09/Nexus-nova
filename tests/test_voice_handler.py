@@ -59,9 +59,14 @@ class TestFulfillmentHandler:
         mocker.patch("flare.store.get_incident", return_value=sample_incident)
 
         mock_resp = Mock()
-        mock_resp.choices = [Mock(message=Mock(
-            content="It does look overwhelmed. Connections peaked at 98 out of 100 max."
-        ))]
+        mock_resp.choices = [
+            Mock(
+                message=Mock(
+                    content="It does look overwhelmed."
+                    " Connections peaked at 98 out of 100 max."
+                )
+            )
+        ]
         mocker.patch("litellm.completion", return_value=mock_resp)
 
         result = fulfillment_handler(lex_fulfillment_event, None)
@@ -78,9 +83,14 @@ class TestFulfillmentHandler:
         mocker.patch("flare.store.get_incident", return_value=sample_incident)
 
         mock_resp = Mock()
-        mock_resp.choices = [Mock(message=Mock(
-            content="Based on the data, this looks like a connection pool issue."
-        ))]
+        mock_resp.choices = [
+            Mock(
+                message=Mock(
+                    content="Based on the data, this looks like a"
+                    " connection pool issue."
+                )
+            )
+        ]
         mock_completion = mocker.patch("litellm.completion", return_value=mock_resp)
 
         event = {
@@ -124,9 +134,9 @@ class TestFulfillmentHandler:
         mocker.patch("flare.store.get_incident", return_value={})
 
         mock_resp = Mock()
-        mock_resp.choices = [Mock(message=Mock(
-            content="I don't have data for that right now."
-        ))]
+        mock_resp.choices = [
+            Mock(message=Mock(content="I don't have data for that right now."))
+        ]
         mocker.patch("litellm.completion", return_value=mock_resp)
 
         result = fulfillment_handler(lex_fulfillment_event, None)

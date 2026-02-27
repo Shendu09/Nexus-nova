@@ -49,5 +49,8 @@ src = ["src"]
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "TCH"]
 
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["TCH"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
