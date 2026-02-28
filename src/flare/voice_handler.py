@@ -143,6 +143,9 @@ def fulfillment_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     incident_id = session_attrs.get("incident_id", "")
     user_question = event.get("inputTranscript", "")
 
+    rca_summary = session_attrs.get("rca_summary", "")
+    briefing_delivered = session_attrs.get("briefing_delivered", "")
+
     incident: dict[str, Any] = {}
     if incident_id:
         try:
@@ -152,18 +155,43 @@ def fulfillment_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
     rca = incident.get("rca", "")
 
-    try:
-        relevant_data = _gather_data_for_question(intent_name, slots, incident, config)
-        message = _reason_about_data(user_question, relevant_data, rca, config)
-    except Exception:
-        logger.exception("Reasoning failed for intent %s", intent_name)
+    if intent_name == "Goodbye":
         message = (
-            "I ran into an issue analyzing the data. Could you try asking that again?"
+            "Glad I could help. The full analysis has been sent to your "
+            "email. Good luck, and don't hesitate to call back if you "
+            "need anything else."
         )
+        return {
+            "sessionState": {
+                "dialogAction": {"type": "Close"},
+                "intent": {"name": intent_name, "state": "Fulfilled"},
+                "sessionAttributes": session_attrs,
+            },
+            "messages": [{"contentType": "PlainText", "content": message}],
+        }
+
+    if not briefing_delivered and rca_summary:
+        message = (
+            f"{rca_summary} "
+            "I am here to help you investigate. What would you like to know?"
+        )
+        session_attrs["briefing_delivered"] = "true"
+    else:
+        try:
+            relevant_data = _gather_data_for_question(
+                intent_name, slots, incident, config
+            )
+            message = _reason_about_data(user_question, relevant_data, rca, config)
+        except Exception:
+            logger.exception("Reasoning failed for intent %s", intent_name)
+            message = (
+                "I ran into an issue analyzing the data."
+                " Could you try asking that again?"
+            )
 
     return {
         "sessionState": {
-            "dialogAction": {"type": "Close"},
+            "dialogAction": {"type": "ElicitIntent"},
             "intent": {"name": intent_name, "state": "Fulfilled"},
             "sessionAttributes": session_attrs,
         },

@@ -233,7 +233,7 @@ Resources:
                 "Errors": [
                   {"NextAction": "dc1", "ErrorType": "NoMatchingError"},
                   {"NextAction": "dc1", "ErrorType": "NoMatchingCondition"},
-                  {"NextAction": "dc1", "ErrorType": "InputTimeLimitExceeded"}
+                  {"NextAction": "lexbot", "ErrorType": "InputTimeLimitExceeded"}
                 ],
                 "Conditions": []
               }
@@ -398,6 +398,23 @@ Resources:
                 - Utterance: "Recap the incident"
                 - Utterance: "What is the big picture"
                 - Utterance: "Give me the rundown"
+              FulfillmentCodeHook:
+                Enabled: true
+            - Name: Goodbye
+              Description: Engineer is done investigating and wants to hang up
+              SampleUtterances:
+                - Utterance: "That is all I need"
+                - Utterance: "Thanks I am done"
+                - Utterance: "Okay thank you"
+                - Utterance: "Goodbye"
+                - Utterance: "I am good"
+                - Utterance: "That is it for now"
+                - Utterance: "Hang up"
+                - Utterance: "I am all set"
+                - Utterance: "Thanks for your help"
+                - Utterance: "I think I have what I need"
+                - Utterance: "Okay I am going to go fix this"
+                - Utterance: "Let me go take care of this"
               FulfillmentCodeHook:
                 Enabled: true
             - Name: FallbackIntent

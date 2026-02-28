@@ -1,17 +1,19 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >
-  Demo resources for Flare - creates a failing Lambda for testing
+  Demo resources for Flare - simulates a web app with database connection pool exhaustion
 
 Parameters:
   FailureMode:
     Type: String
-    Default: mixed
+    Default: cascade
     AllowedValues:
-      - exception
-      - oom
-      - timeout
-      - mixed
-    Description: How the demo Lambda should fail
+      - cascade
+      - gradual
+      - spike
+    Description: >
+      cascade: normal traffic then pool exhaustion then 500s.
+      gradual: slow degradation over many invocations.
+      spike: immediate connection storm.
 
 Resources:
 
@@ -33,32 +35,162 @@ Resources:
     Properties:
       FunctionName: flare-demo-failing
       Runtime: python3.12
-      Handler: handler.handler
+      Handler: index.handler
       Role: !GetAtt DemoFunctionRole.Arn
       MemorySize: 128
       Timeout: 30
       Code:
         ZipFile: |
-          import json, os, logging
+          import json, os, time, random, logging
+
+          logger = logging.getLogger()
+          logger.setLevel(logging.INFO)
+
+          ENDPOINTS = [
+              ("GET", "/api/v2/orders", "orders-service"),
+              ("POST", "/api/v2/payments", "payments-service"),
+              ("GET", "/api/v2/users/profile", "users-service"),
+              ("POST", "/api/v2/inventory/reserve", "inventory-service"),
+              ("GET", "/api/v2/recommendations", "recommendations-service"),
+          ]
 
           def handler(event, context):
-              mode = event.get("mode", os.environ.get("FAILURE_MODE", "exception"))
-              logger = logging.getLogger()
+              mode = event.get("mode", os.environ.get("FAILURE_MODE", "cascade"))
+              invocation = event.get("invocation", 1)
 
-              if mode == "exception":
-                  raise RuntimeError("Unhandled exception in payment processing: NoneType has no attribute 'charge_id'")
+              if mode == "cascade":
+                  _cascade(invocation)
+              elif mode == "gradual":
+                  _gradual(invocation)
+              elif mode == "spike":
+                  _spike()
 
-              if mode == "mixed":
-                  for i in range(50):
-                      logger.info(f"Processing batch {i}: status=ok records=1024")
-                  for i in range(5):
-                      logger.error(f"Connection refused to db-primary.internal:5432 attempt={i}")
-                  logger.warning("Falling back to read replica db-replica.internal:5432")
-                  for i in range(20):
-                      logger.info(f"Processing batch {50 + i}: status=ok records=1024")
-                  raise ConnectionError("Lost connection to db-primary.internal:5432")
+              raise ConnectionError(
+                  "FATAL: All database connections exhausted. "
+                  "Pool(max=100, active=100, waiting=47). "
+                  "Service degraded for orders-service, payments-service."
+              )
 
-              return {"statusCode": 200, "body": json.dumps({"mode": mode})}
+          def _cascade(invocation):
+              for i in range(8):
+                  ep = random.choice(ENDPOINTS)
+                  ms = random.randint(12, 85)
+                  logger.info(
+                      f'{ep[0]} {ep[1]} 200 {ms}ms - '
+                      f'service={ep[2]} db_pool=42/100 region=us-east-1'
+                  )
+
+              logger.warning(
+                  'ConnectionPool WARNING: pool utilization at 87% '
+                  '(87/100 active). Threshold is 80%. '
+                  'Host=db-primary.prod.internal:5432'
+              )
+
+              for i in range(4):
+                  ep = random.choice(ENDPOINTS)
+                  ms = random.randint(200, 1800)
+                  logger.warning(
+                      f'{ep[0]} {ep[1]} 200 {ms}ms SLOW - '
+                      f'service={ep[2]} db_pool={87 + i}/100 '
+                      f'db_wait={ms - 50}ms region=us-east-1'
+                  )
+
+              logger.error(
+                  'ConnectionPool EXHAUSTED: 100/100 connections active, '
+                  '12 requests waiting. Oldest connection held for 45.2s. '
+                  'Host=db-primary.prod.internal:5432 '
+                  'Top holders: orders-service(38), payments-service(31), '
+                  'inventory-service(19), users-service(12)'
+              )
+
+              for i in range(3):
+                  ep = random.choice(ENDPOINTS[:2])
+                  logger.error(
+                      f'{ep[0]} {ep[1]} 503 0ms - '
+                      f'service={ep[2]} error="connection_pool_timeout" '
+                      f'waited=5003ms db_pool=100/100 region=us-east-1'
+                  )
+
+              logger.warning(
+                  'FAILOVER: Attempting read-replica fallback to '
+                  'db-replica-01.prod.internal:5432 for read operations. '
+                  'Write operations will continue to fail.'
+              )
+
+              logger.error(
+                  'payments-service CRITICAL: Failed to commit transaction '
+                  'txn_id=pay_8f2a9c1e. Error: connection_pool_timeout after '
+                  '5000ms. Customer impact: payment not processed. '
+                  'Retry scheduled in 30s.'
+              )
+
+              for i in range(2):
+                  ep = ENDPOINTS[random.randint(2, 4)]
+                  ms = random.randint(90, 250)
+                  logger.info(
+                      f'{ep[0]} {ep[1]} 200 {ms}ms - '
+                      f'service={ep[2]} db_source=replica db_pool=23/50 '
+                      f'region=us-east-1 (degraded: reads only)'
+                  )
+
+              logger.error(
+                  'orders-service ERROR: Cannot create order ord_3b7f12d4. '
+                  'Insert failed: no writable database connection available. '
+                  'Primary pool=100/100, replica=read-only. '
+                  'Customer received HTTP 500.'
+              )
+
+              logger.error(
+                  'HealthCheck FAILED: /health returned 503. '
+                  'db_primary=unreachable db_replica=degraded '
+                  'api_latency_p99=4200ms (threshold: 500ms) '
+                  'error_rate=34% (threshold: 1%)'
+              )
+
+          def _gradual(invocation):
+              pool_usage = min(55 + invocation * 5, 100)
+              for i in range(6):
+                  ep = random.choice(ENDPOINTS)
+                  ms = random.randint(15, 50) + (invocation * 20)
+                  status = 200 if pool_usage < 95 else random.choice([200, 200, 503])
+                  logger.info(
+                      f'{ep[0]} {ep[1]} {status} {ms}ms - '
+                      f'service={ep[2]} db_pool={pool_usage}/100 '
+                      f'region=us-east-1'
+                  )
+              if pool_usage >= 80:
+                  logger.warning(
+                      f'ConnectionPool WARNING: pool at {pool_usage}% '
+                      f'({pool_usage}/100). Latency degrading. '
+                      f'p50={50 + invocation * 15}ms '
+                      f'p99={200 + invocation * 80}ms'
+                  )
+              if pool_usage >= 95:
+                  logger.error(
+                      f'ConnectionPool CRITICAL: {pool_usage}/100 active. '
+                      f'Requests timing out. Host=db-primary.prod.internal:5432'
+                  )
+
+          def _spike():
+              logger.info(
+                  'Traffic spike detected: 3x normal request volume. '
+                  'Source: marketing campaign redirect.'
+              )
+              for i in range(15):
+                  ep = random.choice(ENDPOINTS)
+                  pool = min(45 + i * 4, 100)
+                  ms = random.randint(10, 30) if pool < 80 else random.randint(500, 3000)
+                  status = 200 if pool < 90 else random.choice([200, 503, 503])
+                  level = logger.info if status == 200 else logger.error
+                  level(
+                      f'{ep[0]} {ep[1]} {status} {ms}ms - '
+                      f'service={ep[2]} db_pool={pool}/100 region=us-east-1'
+                  )
+              logger.error(
+                  'ALERT: Connection pool exhausted within 8 seconds of '
+                  'traffic spike. Auto-scaling lag exceeded pool capacity. '
+                  'db_pool=100/100 waiting=62'
+              )
       Environment:
         Variables:
           FAILURE_MODE: !Ref FailureMode

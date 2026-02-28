@@ -3,18 +3,18 @@ set -euo pipefail
 
 DEMO_FUNCTION="${1:-flare-demo-failing}"
 FLARE_FUNCTION="${2:-}"
-INVOCATIONS="${3:-5}"
-MODE="${4:-mixed}"
+INVOCATIONS="${3:-10}"
+MODE="${4:-cascade}"
 
 echo "=== Invoking demo function '$DEMO_FUNCTION' ${INVOCATIONS}x with mode=$MODE ==="
 for i in $(seq 1 "$INVOCATIONS"); do
     echo "  Invocation $i/$INVOCATIONS..."
     aws lambda invoke \
         --function-name "$DEMO_FUNCTION" \
-        --payload "{\"mode\": \"$MODE\"}" \
+        --payload "{\"mode\": \"$MODE\", \"invocation\": $i}" \
         --cli-binary-format raw-in-base64-out \
         /dev/null 2>/dev/null || true
-    sleep 1
+    sleep 2
 done
 
 echo ""
