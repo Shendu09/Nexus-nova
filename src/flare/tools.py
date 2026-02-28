@@ -261,3 +261,49 @@ def _check_ec2_status(instance_id: str) -> dict[str, Any]:
             "instance_status": status.get("InstanceStatus", {}).get("Status", ""),
         },
     }
+
+
+_SAFE_PREFIXES = ("describe_", "get_", "list_")
+
+
+def describe_resource(
+    service: str,
+    operation: str,
+    params: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Call any read-only AWS API dynamically.
+
+    Only operations starting with ``describe_``, ``get_``, or ``list_``
+    are allowed.  Returns the raw API response as a dict, truncated to
+    the first 20 items per list to keep the payload voice-friendly.
+    """
+    operation = operation.lower()
+    if not any(operation.startswith(p) for p in _SAFE_PREFIXES):
+        return {
+            "error": (
+                f"Operation '{operation}' is not allowed. "
+                "Only read-only operations (describe_*, get_*, list_*) "
+                "are permitted."
+            ),
+        }
+
+    try:
+        client = boto3.client(service)
+        api_method = getattr(client, operation)
+        resp = api_method(**(params or {}))
+        resp.pop("ResponseMetadata", None)
+
+        for key, val in resp.items():
+            if isinstance(val, list) and len(val) > 20:
+                resp[key] = val[:20]
+
+        return {"service": service, "operation": operation, "result": resp}
+    except Exception:
+        logger.exception(
+            "describe_resource failed: %s.%s(%s)", service, operation, params
+        )
+        return {
+            "service": service,
+            "operation": operation,
+            "error": f"Failed to call {service}.{operation}",
+        }

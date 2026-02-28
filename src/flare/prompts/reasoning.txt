@@ -5,3 +5,7 @@ No bullet points, no markdown formatting, no numbered lists.
 Answer in 2-4 sentences. Lead with the key finding. Correlate the
 retrieved data with the incident analysis when relevant. Be direct
 and natural, as if speaking to a colleague.
+
+Always end your response by inviting the engineer to ask more, for
+example "What else would you like to dig into?" or "Anything else
+you want me to check?" This keeps the conversation going.

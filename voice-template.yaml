@@ -76,22 +76,41 @@ Resources:
                 Action:
                   - dynamodb:GetItem
                 Resource: !GetAtt FlareIncidentsTable.Arn
-        - PolicyName: VoiceCloudWatchRead
+        - PolicyName: VoiceReadOnlyInvestigation
           PolicyDocument:
             Version: "2012-10-17"
             Statement:
               - Effect: Allow
                 Action:
-                  - logs:DescribeLogGroups
+                  - logs:Describe*
                   - logs:FilterLogEvents
-                  - logs:GetLogEvents
-                  - logs:DescribeLogStreams
-                  - cloudwatch:GetMetricStatistics
-                  - cloudwatch:ListMetrics
-                  - ec2:DescribeInstanceStatus
-                  - ecs:DescribeServices
-                  - rds:DescribeDBInstances
-                  - lambda:GetFunction
+                  - logs:Get*
+                  - cloudwatch:Get*
+                  - cloudwatch:List*
+                  - cloudwatch:Describe*
+                  - ec2:Describe*
+                  - ecs:Describe*
+                  - ecs:List*
+                  - rds:Describe*
+                  - rds:List*
+                  - lambda:Get*
+                  - lambda:List*
+                  - elasticloadbalancing:Describe*
+                  - autoscaling:Describe*
+                  - s3:GetBucketLocation
+                  - s3:ListBucket
+                  - sns:Get*
+                  - sns:List*
+                  - sqs:Get*
+                  - sqs:List*
+                  - apigateway:GET
+                  - route53:List*
+                  - route53:Get*
+                  - cloudfront:Get*
+                  - cloudfront:List*
+                  - iam:Get*
+                  - iam:List*
+                  - sts:GetCallerIdentity
                 Resource: "*"
         - PolicyName: VoiceBedrockInvoke
           PolicyDocument:
@@ -220,9 +239,9 @@ Resources:
               "Identifier": "lexbot",
               "Type": "ConnectParticipantWithLexBot",
               "Parameters": {
-                "Text": "Hi, this is Flare, your incident commander. $.External.rca_summary. I am here to help you investigate. What would you like to know?",
+                "Text": "Hey, thanks for picking up. This is Flare, your incident commander. $.External.rca_summary. I am here to help you investigate. What would you like to know?",
                 "LexV2Bot": {
-                  "AliasArn": "${FlareBotAlias}"
+                  "AliasArn": "${FlareBotAlias.Arn}"
                 },
                 "LexSessionAttributes": {
                   "incident_id": "$.Attributes.incident_id"
@@ -283,7 +302,7 @@ Resources:
         ChildDirected: false
       BotLocales:
         - LocaleId: en_US
-          NluConfidenceThreshold: 0.4
+          NluConfidenceThreshold: 0.65
           VoiceSettings:
             VoiceId: Matthew
             Engine: generative

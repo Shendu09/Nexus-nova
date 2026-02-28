@@ -33,14 +33,18 @@ make deploy-voice \
   LOG_GROUP_PATTERNS="/aws/lambda/*"
 ```
 
-This single command:
+This single command handles everything with zero manual steps:
 
-1. Deploys the `voice-template.yaml` CloudFormation stack
-2. Warms up the voice handler Lambda (cold start takes ~10s)
-3. Configures Nova 2 Sonic S2S on the Lex bot (via CLI, since CloudFormation cannot set this in the same update as bot creation)
-4. Builds a new bot version and updates the live alias
-5. Associates the Lex bot and Lambda with the Connect instance
-6. Updates the base stack to enable the voice pipeline (`ConnectEnabled=true`)
+1. Deploys the `voice-template.yaml` CloudFormation stack (Connect, Lex bot, DynamoDB, Lambda, contact flow)
+2. Warms up the voice handler Lambda (eliminates cold start on first call)
+3. Enables Nova 2 Sonic S2S on the Lex bot locale
+4. Builds the bot locale and waits for the build to complete (polled, not timed)
+5. Creates a new bot version and waits for it to become available (polled, not timed)
+6. Updates the live bot alias to the new version with the fulfillment Lambda code hook
+7. Associates the Lex bot with the Connect instance
+8. Updates the base stack to enable the voice pipeline (`ConnectEnabled=true`)
+
+Each async step (locale build, version creation) is polled until complete, with clear progress messages and failure detection. No manual CLI commands or console steps are needed.
 
 | Resource | What it creates |
 |----------|----------------|
@@ -59,7 +63,7 @@ This single command:
 | `ONCALL_PHONE` | *required* | Engineer's phone number in E.164 format (e.g., `+15551234567`) |
 | `LOG_GROUP_PATTERNS` | *required* | Must match the base stack's log group patterns |
 | `CONNECT_INSTANCE_ID` | `""` | Reuse an existing Connect instance (leave empty to create one) |
-| `ECR_IMAGE_URI` | private ECR `:v0.1.5` | Container image URI (should match the base stack) |
+| `ECR_IMAGE_URI` | private ECR (pinned in Makefile) | Container image URI (should match the base stack) |
 
 ---
 
@@ -190,5 +194,5 @@ This deletes the voice CloudFormation stack, which removes the Connect instance,
 ### Nova Sonic not active
 
 - Ensure Nova 2 Sonic model access is enabled in Bedrock
-- The Makefile configures Nova Sonic via CLI after stack deployment. If the deploy was interrupted, re-run `make deploy-voice`
+- `make deploy-voice` configures Nova Sonic, builds the locale, creates a versioned snapshot, and updates the alias automatically. If the deploy was interrupted mid-way, re-run `make deploy-voice` -- it is idempotent.
 - Verify with: `aws lexv2-models describe-bot-locale --bot-id <id> --bot-version <ver> --locale-id en_US --query 'unifiedSpeechSettings'`

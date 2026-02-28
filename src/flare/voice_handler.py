@@ -158,8 +158,7 @@ def fulfillment_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     if intent_name == "Goodbye":
         message = (
             "Glad I could help. The full analysis has been sent to your "
-            "email. Good luck, and don't hesitate to call back if you "
-            "need anything else."
+            "email. Good luck out there."
         )
         return {
             "sessionState": {
@@ -179,7 +178,7 @@ def fulfillment_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     else:
         try:
             relevant_data = _gather_data_for_question(
-                intent_name, slots, incident, config
+                intent_name, slots, incident, config, user_question
             )
             message = _reason_about_data(user_question, relevant_data, rca, config)
         except Exception:
@@ -204,6 +203,7 @@ def _gather_data_for_question(
     slots: dict[str, Any],
     incident: dict[str, Any],
     config: FlareConfig,
+    user_question: str = "",
 ) -> Any:
     """Look up data for the engineer's question, preferring the cache.
 
@@ -235,9 +235,15 @@ def _gather_data_for_question(
         hit = _find_cached(cached.get("status", []), slots)
         if hit:
             return hit
-        return _live_status_check(slots)
+        live = _live_status_check(slots)
+        if "error" not in live:
+            return live
+        return _smart_resource_lookup(user_question, cached, config)
 
-    # FallbackIntent or Summarize -- send all cached data
+    if intent_name == "FallbackIntent":
+        return _smart_resource_lookup(user_question, cached, config)
+
+    # Summarize -- send all cached data
     return cached
 
 
@@ -341,6 +347,71 @@ def _guess_dimensions(resource_hint: str) -> dict[str, str]:
     if "lambda" in hint or "function" in hint:
         return {"FunctionName": resource_hint}
     return {"InstanceId": resource_hint}
+
+
+def _smart_resource_lookup(
+    question: str,
+    cached: dict[str, Any],
+    config: FlareConfig,
+) -> Any:
+    """Ask Nova 2 Lite which AWS API to call, then execute it.
+
+    Returns the live API result merged with any cached data so the
+    reasoning step has everything it needs.
+    """
+    cached_summary = json.dumps(cached, default=str)
+    if len(cached_summary) > 4000:
+        cached_summary = cached_summary[:4000] + "..."
+
+    plan_prompt = (
+        f'The engineer asked: "{question}"\n\n'
+        f"Cached investigation data:\n{cached_summary}\n\n"
+        "If the cached data can answer this question, respond with "
+        'ONLY the JSON: {"use_cache": true}\n\n'
+        "Otherwise, suggest ONE AWS API call to answer it. Respond "
+        "with ONLY valid JSON:\n"
+        '{"service": "ec2", "operation": "describe_vpcs", '
+        '"params": {"VpcIds": ["vpc-123"]}}\n\n'
+        "Only use read-only operations (describe_*, get_*, list_*). "
+        "Use snake_case for the operation name."
+    )
+
+    try:
+        resp: Any = litellm.completion(
+            model=config.litellm_model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You suggest AWS API calls to investigate "
+                        "infrastructure incidents. Respond with JSON only."
+                    ),
+                },
+                {"role": "user", "content": plan_prompt},
+            ],
+            max_tokens=200,
+            temperature=0.0,
+        )
+        raw = str(resp.choices[0].message.content).strip()
+        start = raw.find("{")
+        end = raw.rfind("}") + 1
+        if start >= 0 and end > start:
+            plan = json.loads(raw[start:end])
+        else:
+            return cached
+
+        if plan.get("use_cache"):
+            return cached
+
+        result = tools.describe_resource(
+            service=plan.get("service", ""),
+            operation=plan.get("operation", ""),
+            params=plan.get("params"),
+        )
+        return {"cached": cached, "live_lookup": result}
+    except Exception:
+        logger.exception("Smart resource lookup failed")
+        return cached
 
 
 def _reason_about_data(

@@ -267,7 +267,7 @@ make deploy-voice \
   LOG_GROUP_PATTERNS="/aws/lambda/*"
 ```
 
-This provisions Amazon Connect (instance + phone number), a Lex V2 bot with Nova 2 Sonic S2S, a contact flow, and a DynamoDB table for incident state and pre-fetched investigation data. The Makefile also configures Nova Sonic on the bot and wires up the fulfillment Lambda automatically.
+This single command provisions everything with zero manual steps: Amazon Connect (instance + phone number), a Lex V2 bot with Nova 2 Sonic S2S, a contact flow, DynamoDB, and all wiring. The Makefile enables Nova Sonic, builds the bot locale, creates a versioned snapshot, updates the live alias with the fulfillment Lambda, and associates the bot with Connect -- all with polled waits so nothing races.
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
