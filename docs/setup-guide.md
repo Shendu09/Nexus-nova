@@ -257,38 +257,39 @@ aws cloudformation deploy \
 
 ## Step 5: Voice Pipeline (Optional)
 
-Flare can call the on-call engineer by phone when an incident is detected, brief them on the root cause analysis, and support interactive voice investigation powered by Nova 2 Sonic.
+Flare can call the on-call engineer by phone when an incident is detected, deliver the RCA briefing via Nova 2 Sonic speech-to-speech, and support interactive voice investigation -- all powered by Nova Sonic.
 
-To enable the voice pipeline, add two parameters to your deploy command:
+The voice pipeline is deployed as a separate CloudFormation stack. First deploy the base stack (Step 1), then deploy the voice stack:
 
 ```bash
-aws cloudformation deploy \
-  --template-file template.yaml \
-  --stack-name flare \
-  --region us-east-1 \
-  --capabilities CAPABILITY_IAM \
-  --parameter-overrides \
-    LogGroupPatterns="/aws/lambda/*" \
-    NotificationEmail=you@example.com \
-    EnableAlarmTrigger=true \
-    AlarmNamePrefix=prod- \
-    ConnectEnabled=true \
-    OncallPhone="+15551234567"
+make deploy-voice \
+  ONCALL_PHONE="+15551234567" \
+  LOG_GROUP_PATTERNS="/aws/lambda/*"
 ```
+
+This provisions Amazon Connect (instance + phone number), a Lex V2 bot with Nova 2 Sonic S2S, a contact flow, and a DynamoDB table for incident state and pre-fetched investigation data. The Makefile also configures Nova Sonic on the bot and wires up the fulfillment Lambda automatically.
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `ConnectEnabled` | `false` | Enable outbound voice calling |
-| `OncallPhone` | `""` | On-call engineer's phone number (E.164 format) |
+| `ONCALL_PHONE` | *required* | On-call engineer's phone number (E.164 format, e.g., `+15551234567`) |
+| `LOG_GROUP_PATTERNS` | *required* | Must match the base stack's log group patterns |
+| `CONNECT_INSTANCE_ID` | `""` | Reuse an existing Connect instance (leave empty to create one) |
 
-The Amazon Connect instance, phone number, Lex V2 bot with Nova 2 Sonic, and contact flow are all provisioned automatically. The only prerequisite is enabling Nova model access in Bedrock. See the [Voice Setup Guide](voice-setup-guide.md) for details.
+The only prerequisite beyond the base stack is enabling Nova 2 Sonic model access in Bedrock. See the [Voice Setup Guide](voice-setup-guide.md) for details.
 
 The SNS notification is always sent regardless of whether the voice pipeline is enabled.
 
 ## Teardown
 
 ```bash
-aws cloudformation delete-stack --stack-name flare --region us-east-1
+make teardown-all    # tears down voice stack first, then base stack
+```
+
+Or individually:
+
+```bash
+make teardown-voice  # voice stack only (Connect, Lex, DynamoDB)
+make teardown        # base stack only (Lambda, SNS, EventBridge rules)
 ```
 
 This removes all Flare resources including the Connect instance, phone number, Lex bot, Lambda functions, DynamoDB table, and IAM roles. It does not affect your log groups or alarms.

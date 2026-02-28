@@ -28,16 +28,21 @@ NEXT STEPS:
 1. [actionable step]
 2. [actionable step]
 3. [actionable step]
-SPOKEN SUMMARY: [2-3 sentence conversational summary suitable for reading
-aloud over a phone call. Lead with what happened, then the likely cause.
-Do not include log lines, timestamps, or formatting. Speak as if briefing
-a colleague who just woke up.]
+SPOKEN SUMMARY: [3-4 sentence conversational summary suitable for reading
+aloud over a phone call. Start by naming the affected resource and region
+so the listener has context, then describe what went wrong and the likely
+root cause. Do not include log lines, timestamps, error codes, or
+formatting. Speak as if calmly briefing a colleague who just woke up.
+Example tone: "Your Lambda function flare-demo-failing in us-east-1 is
+having trouble. It looks like the handler module is missing from the
+deployment package, so every invocation is crashing on startup. You'll
+want to check that the handler file is included in the build."]
 
 If the logs look healthy with no actionable findings:
 
 STATUS: Healthy
 SUMMARY: [brief statement, e.g., "Normal operation across all monitored services."]
-SPOKEN SUMMARY: [same as SUMMARY, conversational tone]
+SPOKEN SUMMARY: [same as SUMMARY, conversational tone with resource and region context]
 
 Keep your response concise. The written fields will be delivered as a
 notification. The SPOKEN SUMMARY will be read aloud over a phone call.

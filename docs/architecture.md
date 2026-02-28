@@ -31,8 +31,7 @@ flowchart LR
         PF["Pre-Fetch"]
         CON["Amazon Connect"]
         CF["Contact Flow"]
-        Polly["Polly TTS"]
-        Lex["Lex + Nova 2 Sonic"]
+        Lex["Lex + Nova 2 Sonic S2S"]
         FF["Fulfillment Lambda"]
     end
 
@@ -45,7 +44,7 @@ flowchart LR
     NL --> SNS --> Email
     NL --> DDB
     NL --> PF
-    NL --> CON --> CF --> Polly --> Lex --> FF --> DDB
+    NL --> CON --> CF --> Lex --> FF --> DDB
 ```
 
 ---
@@ -109,12 +108,12 @@ flowchart TD
 
 ### Pipeline 3: Voice Conversation
 
-Delivers the RCA by phone and supports interactive investigation using a retrieve-then-reason pattern.
+Delivers the RCA by phone and supports interactive investigation using Nova 2 Sonic speech-to-speech and a retrieve-then-reason pattern. All voice output goes through Nova Sonic -- no separate TTS engine is used.
 
 ```mermaid
 flowchart TD
-    ANS["Engineer answers"] --> BRIEF["Polly reads RCA\nbriefing aloud"]
-    BRIEF --> LEX["Lex + Nova 2 Sonic\nlistens for questions"]
+    ANS["Engineer answers"] --> BRIEF["Nova 2 Sonic\ndelivers RCA briefing"]
+    BRIEF --> LEX["Nova 2 Sonic\nlistens for questions"]
     LEX --> Q["Engineer asks\na question"]
     Q --> INTENT["Lex classifies\nintent"]
     INTENT --> RETR["Fulfillment Lambda:\nRetrieve data"]
@@ -201,7 +200,8 @@ sequenceDiagram
     CON->>VH: Invoke briefing handler
     VH->>DDB: Read RCA
     VH-->>CON: Return RCA text
-    CON->>Phone: Polly reads RCA aloud
+    CON->>Lex: Hand off to Nova Sonic with RCA as opening text
+    Lex->>Phone: Nova Sonic delivers RCA briefing
     loop Investigation
         Phone->>Lex: Engineer asks question
         Lex->>VH: Fulfillment request
@@ -286,23 +286,24 @@ The handler (`handler.py`) is the entry point. It calls modules left-to-right th
 
 ```mermaid
 flowchart TD
-    subgraph sam [SAM / CloudFormation]
+    subgraph base [Base Stack - template.yaml]
         FN["Flare Lambda\n(container image)"]
-        VFN["Voice Handler Lambda\n(container image)"]
-        DDB["DynamoDB Table\n(flare-incidents)"]
         SNS["SNS Topic"]
         ER1["EventBridge Rule\n(alarm trigger)"]
         ER2["EventBridge Rule\n(schedule trigger)"]
         SF["Subscription Filter"]
         R1["IAM Role\n(Flare Function)"]
-        R2["IAM Role\n(Voice Handler)"]
     end
 
-    subgraph manual [Manual Console Setup]
+    subgraph voice [Voice Stack - voice-template.yaml]
+        VFN["Voice Handler Lambda\n(container image)"]
+        DDB["DynamoDB Table\n(flare-incidents)"]
         CI["Connect Instance"]
         PN["Phone Number (DID)"]
         CF["Contact Flow"]
-        LB["Lex V2 Bot\n+ Nova Sonic S2S"]
+        LB["Lex V2 Bot\n+ Nova 2 Sonic S2S"]
+        R2["IAM Role\n(Voice Handler)"]
+        SSM["SSM Parameter\n(Connect config)"]
     end
 
     ER1 --> FN
@@ -313,15 +314,18 @@ flowchart TD
     FN -.->|StartOutboundVoiceContact| CI
     CI --> PN
     CI --> CF
-    CF --> VFN
     CF --> LB
     LB --> VFN
     VFN --> DDB
 ```
 
-**SAM-managed resources** (deployed via `template.yaml`): Both Lambdas, DynamoDB table, SNS topic, EventBridge rules, subscription filter, IAM roles. These are created and destroyed with a single CloudFormation command.
+The system uses two CloudFormation stacks:
 
-**Manually-managed resources** (configured via AWS console): Connect instance, phone number, contact flow, Lex V2 bot. These are documented in `docs/voice-setup-guide.md` with step-by-step instructions. A teardown script is provided at `scripts/cleanup_connect.sh`.
+**Base stack** (`template.yaml`, deployed via `make deploy`): Flare analysis Lambda, SNS topic, EventBridge rules, subscription filter, IAM roles. This handles log analysis and notification independently of the voice layer.
+
+**Voice stack** (`voice-template.yaml`, deployed via `make deploy-voice`): Voice handler Lambda, DynamoDB table, Amazon Connect instance, phone number, contact flow, Lex V2 bot with Nova 2 Sonic S2S, IAM roles, and an SSM parameter that passes Connect configuration back to the base stack. Nova Sonic is configured via post-deploy CLI commands in the Makefile (CloudFormation cannot set `UnifiedSpeechSettings` and `VoiceSettings` in the same update).
+
+Both stacks use the same container image from private ECR. Teardown with `make teardown-all`.
 
 ### DynamoDB Schema
 
@@ -366,7 +370,7 @@ t=12s   │ PARALLEL:                                    │
         │   t=12s  StartOutboundVoiceContact           │
         │   t=13s  Phone starts ringing                │
         │   t=25s  Engineer answers                    │
-        │   t=26s  Polly reads RCA briefing            │
+        │   t=26s  Nova Sonic delivers RCA briefing    │
         │   t=40s  "What would you like to know?"      │
         │                                              │
         │ Thread 2: Pre-fetch                          │
@@ -391,7 +395,7 @@ The pre-fetch completes ~5 seconds before the engineer finishes hearing the RCA 
 
 | Failure | Impact | Fallback |
 |---------|--------|----------|
-| Nova Sonic unavailable / Lex error | Voice conversation fails | Contact flow plays "check your email" message. SNS notification already sent. |
+| Nova Sonic unavailable / Lex error | Voice conversation fails | Contact flow disconnects. SNS notification already sent as fallback. |
 | Connect call fails (no answer) | Engineer not reached by phone | SNS email/Slack is the primary channel; voice is supplementary. |
 | Fulfillment Lambda timeout (8s) | One question unanswered | Catches exception, returns "I ran into an issue, try asking again." |
 | DynamoDB read failure | No RCA for briefing | Briefing Lambda returns generic "incident detected, check your email" message. |

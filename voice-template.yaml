@@ -131,6 +131,14 @@ Resources:
       Action: lambda:InvokeFunction
       Principal: connect.amazonaws.com
 
+  FlareVoiceHandlerLexPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref FlareVoiceHandlerFunction
+      Action: lambda:InvokeFunction
+      Principal: lexv2.amazonaws.com
+      SourceArn: !Sub "arn:aws:lex:${AWS::Region}:${AWS::AccountId}:bot-alias/${FlareBot}/*"
+
   # --- Amazon Connect ---
 
   FlareConnectInstance:
@@ -176,7 +184,68 @@ Resources:
         - !Sub "arn:aws:connect:${AWS::Region}:${AWS::AccountId}:instance/${ConnectInstanceId}"
       Name: !Sub "flare-incident-commander-${BaseStackName}"
       Type: CONTACT_FLOW
-      Content: '{"Version":"2019-10-30","StartAction":"Disconnect","Actions":[{"Identifier":"Disconnect","Type":"DisconnectParticipant","Parameters":{},"Transitions":{}}]}'
+      Content: !Sub |
+        {
+          "Version": "2019-10-30",
+          "StartAction": "setVoice",
+          "Actions": [
+            {
+              "Identifier": "setVoice",
+              "Type": "UpdateContactTextToSpeechVoice",
+              "Parameters": {
+                "TextToSpeechVoice": "Matthew",
+                "TextToSpeechEngine": "Generative"
+              },
+              "Transitions": {
+                "NextAction": "lambda1",
+                "Errors": [{"NextAction": "lambda1", "ErrorType": "NoMatchingError"}],
+                "Conditions": []
+              }
+            },
+            {
+              "Identifier": "lambda1",
+              "Type": "InvokeLambdaFunction",
+              "Parameters": {
+                "LambdaFunctionARN": "${FlareVoiceHandlerFunction.Arn}",
+                "InvocationTimeLimitSeconds": "8",
+                "ResponseValidation": {"ResponseType": "STRING_MAP"}
+              },
+              "Transitions": {
+                "NextAction": "lexbot",
+                "Errors": [{"NextAction": "dc1", "ErrorType": "NoMatchingError"}],
+                "Conditions": []
+              }
+            },
+            {
+              "Identifier": "lexbot",
+              "Type": "ConnectParticipantWithLexBot",
+              "Parameters": {
+                "Text": "Hi, this is Flare, your incident commander. $.External.rca_summary. I am here to help you investigate. What would you like to know?",
+                "LexV2Bot": {
+                  "AliasArn": "${FlareBotAlias}"
+                },
+                "LexSessionAttributes": {
+                  "incident_id": "$.Attributes.incident_id"
+                }
+              },
+              "Transitions": {
+                "NextAction": "dc1",
+                "Errors": [
+                  {"NextAction": "dc1", "ErrorType": "NoMatchingError"},
+                  {"NextAction": "dc1", "ErrorType": "NoMatchingCondition"},
+                  {"NextAction": "dc1", "ErrorType": "InputTimeLimitExceeded"}
+                ],
+                "Conditions": []
+              }
+            },
+            {
+              "Identifier": "dc1",
+              "Type": "DisconnectParticipant",
+              "Parameters": {},
+              "Transitions": {}
+            }
+          ]
+        }
 
   # SSM parameter created by post-deploy script (Makefile)
 
@@ -234,6 +303,11 @@ Resources:
                 - Utterance: "What do the metrics show"
                 - Utterance: "Pull up the {metric} data"
                 - Utterance: "Is {resource} under heavy load"
+              SlotPriorities:
+                - Priority: 1
+                  SlotName: resource
+                - Priority: 2
+                  SlotName: metric
               Slots:
                 - Name: resource
                   SlotTypeName: AMAZON.AlphaNumeric
@@ -270,6 +344,9 @@ Resources:
                 - Utterance: "Any connection errors in the logs"
                 - Utterance: "What is the log output for {service}"
                 - Utterance: "Check the logs"
+              SlotPriorities:
+                - Priority: 1
+                  SlotName: service
               Slots:
                 - Name: service
                   SlotTypeName: AMAZON.AlphaNumeric
@@ -294,6 +371,9 @@ Resources:
                 - Utterance: "What is the health of {resource}"
                 - Utterance: "Is {resource} responding"
                 - Utterance: "Check the status"
+              SlotPriorities:
+                - Priority: 1
+                  SlotName: resource
               Slots:
                 - Name: resource
                   SlotTypeName: AMAZON.AlphaNumeric
