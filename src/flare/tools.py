@@ -288,7 +288,7 @@ def describe_resource(
         }
 
     try:
-        client = boto3.client(service)
+        client: Any = boto3.client(service)  # type: ignore[call-overload]
         api_method = getattr(client, operation)
         resp = api_method(**(params or {}))
         resp.pop("ResponseMetadata", None)
