@@ -417,6 +417,16 @@ Resources:
                 - Utterance: "Recap the incident"
                 - Utterance: "What is the big picture"
                 - Utterance: "Give me the rundown"
+                - Utterance: "Okay what is it"
+                - Utterance: "Go ahead"
+                - Utterance: "Tell me"
+                - Utterance: "What is going on"
+                - Utterance: "What is the incident"
+                - Utterance: "Tell me what happened"
+                - Utterance: "What is the problem"
+                - Utterance: "Okay tell me"
+                - Utterance: "Go ahead and tell me"
+                - Utterance: "Okay what happened"
               FulfillmentCodeHook:
                 Enabled: true
             - Name: Goodbye
@@ -424,7 +434,7 @@ Resources:
               SampleUtterances:
                 - Utterance: "That is all I need"
                 - Utterance: "Thanks I am done"
-                - Utterance: "Okay thank you"
+                - Utterance: "Thank you goodbye"
                 - Utterance: "Goodbye"
                 - Utterance: "I am good"
                 - Utterance: "That is it for now"
@@ -432,7 +442,7 @@ Resources:
                 - Utterance: "I am all set"
                 - Utterance: "Thanks for your help"
                 - Utterance: "I think I have what I need"
-                - Utterance: "Okay I am going to go fix this"
+                - Utterance: "I am going to go fix this"
                 - Utterance: "Let me go take care of this"
               FulfillmentCodeHook:
                 Enabled: true
