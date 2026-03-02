@@ -95,7 +95,12 @@ def plan(analysis: str, trigger: TriggerInfo, config: FlareConfig) -> dict[str, 
         return json.loads(raw)  # type: ignore[no-any-return]
     except json.JSONDecodeError:
         logger.warning("Failed to parse pre-fetch plan JSON: %s", raw[:200])
-        return {"metrics": [], "log_queries": [], "status_checks": []}
+        return {
+            "metrics": [],
+            "log_queries": [],
+            "status_checks": [],
+            "resource_lookups": [],
+        }
 
 
 def execute(prefetch_plan: dict[str, Any], config: FlareConfig) -> dict[str, Any]:
@@ -104,7 +109,7 @@ def execute(prefetch_plan: dict[str, Any], config: FlareConfig) -> dict[str, Any
     Each query has an individual timeout.  Failed queries are logged
     but do not block the rest.
     """
-    cached: dict[str, Any] = {"metrics": [], "logs": [], "status": []}
+    cached: dict[str, Any] = {"metrics": [], "logs": [], "status": [], "resources": []}
 
     tasks: list[dict[str, Any]] = []
     for m in prefetch_plan.get("metrics", []):
@@ -113,6 +118,8 @@ def execute(prefetch_plan: dict[str, Any], config: FlareConfig) -> dict[str, Any
         tasks.append({"type": "log", "spec": lq})
     for sc in prefetch_plan.get("status_checks", []):
         tasks.append({"type": "status", "spec": sc})
+    for rl in prefetch_plan.get("resource_lookups", []):
+        tasks.append({"type": "resource", "spec": rl})
 
     if not tasks:
         return cached
@@ -137,6 +144,14 @@ def execute(prefetch_plan: dict[str, Any], config: FlareConfig) -> dict[str, Any
             )
             result["query_key"] = spec.get("query_key", "")
             return ("logs", result)
+        elif task["type"] == "resource":
+            result = tools.describe_resource(
+                service=spec.get("service", ""),
+                operation=spec.get("operation", ""),
+                params=spec.get("params"),
+            )
+            result["query_key"] = spec.get("query_key", "")
+            return ("resources", result)
         else:
             result = tools.check_resource_status(
                 resource_type=spec.get("resource_type", ""),

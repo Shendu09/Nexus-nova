@@ -209,12 +209,23 @@ Resources:
                 Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/flare/*"
               - Effect: Allow
                 Action:
-                  - cloudwatch:GetMetricStatistics
-                  - cloudwatch:ListMetrics
-                  - lambda:GetFunction
-                  - ec2:DescribeInstanceStatus
-                  - ecs:DescribeServices
-                  - rds:DescribeDBInstances
+                  - ec2:Describe*
+                  - ecs:Describe*
+                  - ecs:List*
+                  - rds:Describe*
+                  - rds:List*
+                  - lambda:Get*
+                  - lambda:List*
+                  - cloudwatch:Get*
+                  - cloudwatch:List*
+                  - cloudwatch:Describe*
+                  - elasticloadbalancing:Describe*
+                  - autoscaling:Describe*
+                  - cloudformation:Describe*
+                  - cloudformation:Get*
+                  - cloudformation:List*
+                  - tag:GetResources
+                  - tag:GetTagKeys
                 Resource: "*"
 
   # --- Lambda ---

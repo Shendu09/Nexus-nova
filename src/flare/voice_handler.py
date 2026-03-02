@@ -11,6 +11,7 @@ from flare import store, tools
 from flare.config import FlareConfig
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 _REASONING_PROMPT: str | None = None
 
@@ -357,7 +358,9 @@ def _smart_resource_lookup(
     """Ask Nova 2 Lite which AWS API to call, then execute it.
 
     Returns the live API result merged with any cached data so the
-    reasoning step has everything it needs.
+    reasoning step has everything it needs.  On failure, returns a
+    structured error so the reasoning LLM can communicate the issue
+    honestly instead of silently omitting data.
     """
     cached_summary = json.dumps(cached, default=str)
     if len(cached_summary) > 4000:
@@ -370,10 +373,13 @@ def _smart_resource_lookup(
         'ONLY the JSON: {"use_cache": true}\n\n'
         "Otherwise, suggest ONE AWS API call to answer it. Respond "
         "with ONLY valid JSON:\n"
-        '{"service": "ec2", "operation": "describe_vpcs", '
-        '"params": {"VpcIds": ["vpc-123"]}}\n\n'
+        '{"service": "ec2", "operation": "describe_security_groups", '
+        '"params": {"Filters": [{"Name": "group-id", "Values": ["sg-123"]}]}}\n\n'
         "Only use read-only operations (describe_*, get_*, list_*). "
-        "Use snake_case for the operation name."
+        "Use snake_case for the operation name. "
+        "You have full read-only access to EC2, ECS, RDS, Lambda, "
+        "CloudWatch, VPC networking, security groups, CloudFormation, "
+        "and other AWS services."
     )
 
     try:
@@ -393,25 +399,59 @@ def _smart_resource_lookup(
             temperature=0.0,
         )
         raw = str(resp.choices[0].message.content).strip()
-        start = raw.find("{")
-        end = raw.rfind("}") + 1
-        if start >= 0 and end > start:
-            plan = json.loads(raw[start:end])
-        else:
-            return cached
-
-        if plan.get("use_cache"):
-            return cached
-
-        result = tools.describe_resource(
-            service=plan.get("service", ""),
-            operation=plan.get("operation", ""),
-            params=plan.get("params"),
-        )
-        return {"cached": cached, "live_lookup": result}
     except Exception:
-        logger.exception("Smart resource lookup failed")
+        logger.exception("Smart lookup LLM call failed")
+        return {
+            "cached": cached,
+            "lookup_error": "Failed to determine which AWS API to call.",
+        }
+
+    start = raw.find("{")
+    end = raw.rfind("}") + 1
+    if start < 0 or end <= start:
+        logger.warning("Smart lookup returned non-JSON response: %s", raw[:200])
+        return {
+            "cached": cached,
+            "lookup_error": "Could not parse an API call plan from the model response.",
+        }
+
+    try:
+        plan = json.loads(raw[start:end])
+    except json.JSONDecodeError:
+        logger.warning("Smart lookup JSON parse failed: %s", raw[:200])
+        return {
+            "cached": cached,
+            "lookup_error": "Model returned malformed JSON for the API call plan.",
+        }
+
+    if plan.get("use_cache"):
         return cached
+
+    service = plan.get("service", "")
+    operation = plan.get("operation", "")
+    params = plan.get("params")
+    logger.info("Smart lookup plan: %s.%s(%s)", service, operation, params)
+
+    result = tools.describe_resource(
+        service=service,
+        operation=operation,
+        params=params,
+    )
+
+    if "error" in result:
+        logger.warning("Smart lookup API call failed: %s", result["error"])
+        return {
+            "cached": cached,
+            "lookup_error": (
+                f"Attempted {service}.{operation} but it failed: {result['error']}"
+            ),
+        }
+
+    logger.info(
+        "Smart lookup result keys: %s",
+        list(result.keys()) if isinstance(result, dict) else type(result),
+    )
+    return {"cached": cached, "live_lookup": result}
 
 
 def _reason_about_data(

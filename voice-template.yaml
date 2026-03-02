@@ -111,6 +111,41 @@ Resources:
                   - iam:Get*
                   - iam:List*
                   - sts:GetCallerIdentity
+                  - dynamodb:Describe*
+                  - dynamodb:List*
+                  - elasticache:Describe*
+                  - elasticache:List*
+                  - es:Describe*
+                  - es:List*
+                  - kafka:Describe*
+                  - kafka:List*
+                  - kinesis:Describe*
+                  - kinesis:List*
+                  - cloudformation:Describe*
+                  - cloudformation:Get*
+                  - cloudformation:List*
+                  - cloudtrail:LookupEvents
+                  - cloudtrail:Get*
+                  - ssm:Describe*
+                  - ssm:Get*
+                  - ssm:List*
+                  - events:Describe*
+                  - events:List*
+                  - application-autoscaling:Describe*
+                  - tag:GetResources
+                  - tag:GetTagKeys
+                  - health:Describe*
+                  - secretsmanager:Describe*
+                  - secretsmanager:List*
+                  - acm:Describe*
+                  - acm:List*
+                  - wafv2:Get*
+                  - wafv2:List*
+                  - eks:Describe*
+                  - eks:List*
+                  - ecr:Describe*
+                  - ecr:List*
+                  - ecr:GetLifecyclePolicy
                 Resource: "*"
         - PolicyName: VoiceBedrockInvoke
           PolicyDocument:
@@ -444,6 +479,17 @@ Resources:
                 - Utterance: "I think I have what I need"
                 - Utterance: "I am going to go fix this"
                 - Utterance: "Let me go take care of this"
+                - Utterance: "No thanks"
+                - Utterance: "No that is all"
+                - Utterance: "No I am good"
+                - Utterance: "Nope"
+                - Utterance: "Okay thank you goodbye"
+                - Utterance: "Alright thanks"
+                - Utterance: "That will do"
+                - Utterance: "Nothing else"
+                - Utterance: "I am done"
+                - Utterance: "No thank you"
+                - Utterance: "No thank you that is all"
               FulfillmentCodeHook:
                 Enabled: true
             - Name: FallbackIntent

@@ -1,4 +1,5 @@
-.PHONY: deploy deploy-voice deploy-all teardown teardown-voice teardown-all test lint
+.PHONY: deploy deploy-voice deploy-all teardown teardown-voice teardown-all \
+       deploy-demo-infra teardown-demo-infra break-demo fix-demo test lint
 
 STACK_NAME := flare
 REGION     ?= us-east-1
@@ -25,7 +26,15 @@ ONCALL_PHONE         ?=
 CONNECT_INSTANCE_ID  ?=
 
 # Container image (default :latest; override to pin version)
-ECR_IMAGE_URI ?= 019107478361.dkr.ecr.us-east-1.amazonaws.com/flare:v0.1.10
+ECR_IMAGE_URI ?= 019107478361.dkr.ecr.us-east-1.amazonaws.com/flare:v0.1.11
+
+# Container runtime (docker, podman, etc.)
+CONTAINER_RT ?= $(shell command -v podman 2>/dev/null || command -v docker 2>/dev/null)
+
+# Demo infrastructure
+DEMO_INFRA_STACK := flare-demo-infra
+DEMO_ECR_REPO    := 019107478361.dkr.ecr.$(REGION).amazonaws.com/flare-demo
+DEMO_IMAGE_TAG   ?= latest
 
 define check_param
 $(if $($(1)),,$(error $(1) is required. Usage: make deploy $(1)=<value>))
@@ -163,6 +172,45 @@ teardown-all: teardown-voice
 	aws cloudformation wait stack-delete-complete --stack-name $(STACK_NAME)-voice --region $(REGION) 2>/dev/null || true
 	aws cloudformation delete-stack --stack-name $(STACK_NAME) --region $(REGION)
 	@echo "All stacks deletion initiated."
+
+# ---------- Demo infrastructure (real ECS + RDS) ----------
+
+deploy-demo-infra:
+	@echo "==> Creating demo ECR repo (if needed)..."
+	@aws ecr create-repository --repository-name flare-demo --region $(REGION) 2>/dev/null || true
+	@echo "==> Building demo app image..."
+	$(CONTAINER_RT) build -t $(DEMO_ECR_REPO):$(DEMO_IMAGE_TAG) -f demo/Dockerfile.demo demo/
+	@echo "==> Logging in to ECR..."
+	@aws ecr get-login-password --region $(REGION) | $(CONTAINER_RT) login --username AWS --password-stdin $(DEMO_ECR_REPO)
+	@echo "==> Pushing demo image..."
+	$(CONTAINER_RT) push $(DEMO_ECR_REPO):$(DEMO_IMAGE_TAG)
+	@echo "==> Deploying demo infrastructure (VPC, RDS, ECS — takes ~5 min)..."
+	aws cloudformation deploy \
+		--template-file demo/demo-infra-template.yaml \
+		--stack-name $(DEMO_INFRA_STACK) \
+		--region $(REGION) \
+		--capabilities CAPABILITY_IAM \
+		--parameter-overrides DemoImageUri=$(DEMO_ECR_REPO):$(DEMO_IMAGE_TAG)
+	@echo ""
+	@echo "Demo infrastructure deployed. Verify healthy logs:"
+	@echo "  aws logs tail /ecs/flare-demo --follow --region $(REGION)"
+	@echo ""
+	@echo "Trigger a network partition:"
+	@echo "  make break-demo"
+
+teardown-demo-infra:
+	aws cloudformation delete-stack --stack-name $(DEMO_INFRA_STACK) --region $(REGION)
+	@echo "Demo infra stack deletion initiated. Waiting..."
+	aws cloudformation wait stack-delete-complete --stack-name $(DEMO_INFRA_STACK) --region $(REGION) 2>/dev/null || true
+	@echo "Demo infrastructure torn down."
+
+break-demo:
+	@bash demo/trigger.sh break
+
+fix-demo:
+	@bash demo/trigger.sh fix
+
+# ---------- Tests ----------
 
 test:
 	pytest -v
