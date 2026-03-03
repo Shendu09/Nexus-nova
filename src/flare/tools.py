@@ -310,12 +310,12 @@ def describe_resource(
                 resp[key] = val[:20]
 
         return {"service": service, "operation": operation, "result": resp}
-    except Exception:
+    except Exception as exc:
         logger.exception(
             "describe_resource failed: %s.%s(%s)", service, operation, params
         )
         return {
             "service": service,
             "operation": operation,
-            "error": f"Failed to call {service}.{operation}",
+            "error": f"Failed to call {service}.{operation}: {exc}",
         }

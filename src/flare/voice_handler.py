@@ -6,6 +6,8 @@ from importlib.resources import files
 from typing import Any
 
 import litellm
+from genji import LLMBackend as GenjiBackend
+from genji import Template as GenjiTemplate
 
 from flare import store, tools
 from flare.config import FlareConfig
@@ -350,6 +352,12 @@ def _guess_dimensions(resource_hint: str) -> dict[str, str]:
     return {"InstanceId": resource_hint}
 
 
+_LOOKUP_TEMPLATE_SOURCE = """\
+{
+  "api_call": {{ gen("Given this question from an on-call engineer: '{question}' and this cached investigation data: {cached_summary} -- if the cached data can already answer the question, respond with exactly: use_cache -- otherwise respond with exactly one boto3 API call in service.operation format using snake_case, like ec2.describe_security_groups or rds.describe_db_instances or ecs.describe_services. Only use read-only operations starting with describe_, get_, or list_. You have full access to all AWS services.", max_tokens=60, temperature=0.0) }}
+}"""  # noqa: E501
+
+
 def _smart_resource_lookup(
     question: str,
     cached: dict[str, Any],
@@ -357,84 +365,59 @@ def _smart_resource_lookup(
 ) -> Any:
     """Ask Nova 2 Lite which AWS API to call, then execute it.
 
-    Returns the live API result merged with any cached data so the
-    reasoning step has everything it needs.  On failure, returns a
-    structured error so the reasoning LLM can communicate the issue
-    honestly instead of silently omitting data.
+    Uses a Genji template to guarantee valid JSON structure.  The LLM
+    only generates a ``service.operation`` string; the template owns
+    the JSON brackets and keys.
     """
     cached_summary = json.dumps(cached, default=str)
     if len(cached_summary) > 4000:
         cached_summary = cached_summary[:4000] + "..."
 
-    plan_prompt = (
-        f'The engineer asked: "{question}"\n\n'
-        f"Cached investigation data:\n{cached_summary}\n\n"
-        "If the cached data can answer this question, respond with "
-        'ONLY the JSON: {"use_cache": true}\n\n'
-        "Otherwise, suggest ONE AWS API call to answer it. Respond "
-        "with ONLY valid JSON:\n"
-        '{"service": "<aws_service>", "operation": "<snake_case_method>", '
-        '"params": {<optional_filters>}}\n\n'
-        "Only use read-only operations (describe_*, get_*, list_*). "
-        "Use snake_case for the operation name. "
-        "You have full read-only access to all AWS services. "
-        "Choose the API call that best answers the engineer's question."
-    )
-
     try:
-        resp: Any = litellm.completion(
+        backend = GenjiBackend(
             model=config.litellm_model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You suggest AWS API calls to investigate "
-                        "infrastructure incidents. Respond with JSON only."
-                    ),
-                },
-                {"role": "user", "content": plan_prompt},
-            ],
-            max_tokens=200,
             temperature=0.0,
+            max_tokens=60,
+            add_system_prompt=True,
         )
-        raw = str(resp.choices[0].message.content).strip()
+        template = GenjiTemplate(
+            _LOOKUP_TEMPLATE_SOURCE,
+            backend=backend,
+            default_filter="json",
+        )
+        plan = template.render_json(
+            question=question,
+            cached_summary=cached_summary,
+        )
     except Exception:
-        logger.exception("Smart lookup LLM call failed")
+        logger.exception("Smart lookup Genji render failed")
         return {
             "cached": cached,
             "lookup_error": "Failed to determine which AWS API to call.",
         }
 
-    start = raw.find("{")
-    end = raw.rfind("}") + 1
-    if start < 0 or end <= start:
-        logger.warning("Smart lookup returned non-JSON response: %s", raw[:200])
-        return {
-            "cached": cached,
-            "lookup_error": "Could not parse an API call plan from the model response.",
-        }
+    api_call = str(plan.get("api_call", "")).strip()
+    logger.info("Smart lookup api_call: %s", api_call)
 
-    try:
-        plan = json.loads(raw[start:end])
-    except json.JSONDecodeError:
-        logger.warning("Smart lookup JSON parse failed: %s", raw[:200])
-        return {
-            "cached": cached,
-            "lookup_error": "Model returned malformed JSON for the API call plan.",
-        }
-
-    if plan.get("use_cache"):
+    if api_call == "use_cache":
         return cached
 
-    service = plan.get("service", "")
-    operation = plan.get("operation", "")
-    params = plan.get("params")
-    logger.info("Smart lookup plan: %s.%s(%s)", service, operation, params)
+    if "." not in api_call:
+        logger.warning("Smart lookup returned invalid api_call: %s", api_call)
+        return {
+            "cached": cached,
+            "lookup_error": (
+                "Could not determine which AWS API to call "
+                f"from model response: {api_call}"
+            ),
+        }
+
+    service, _, operation = api_call.partition(".")
+    logger.info("Smart lookup plan: %s.%s", service, operation)
 
     result = tools.describe_resource(
         service=service,
         operation=operation,
-        params=params,
     )
 
     if "error" in result:

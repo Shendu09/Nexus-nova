@@ -11,6 +11,7 @@ license = "Apache-2.0"
 dependencies = [
     "boto3",
     "cordon",
+    "genji",
     "litellm",
 ]
 
@@ -35,7 +36,7 @@ packages = ["flare"]
 mypy_path = "src"
 
 [[tool.mypy.overrides]]
-module = ["cordon.*", "litellm", "litellm.*"]
+module = ["cordon.*", "genji", "genji.*", "litellm", "litellm.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
