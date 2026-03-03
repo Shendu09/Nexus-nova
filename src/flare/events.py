@@ -34,6 +34,17 @@ class TriggerInfo:
     raw_logs: str | None = None
     lookback_minutes: int | None = None
 
+    def format_context(self) -> str:
+        """Format trigger metadata into a human-readable context string."""
+        parts: list[str] = [f"Trigger type: {self.trigger_type.value}"]
+        if self.alarm_name:
+            parts.append(f"Alarm: {self.alarm_name}")
+        if self.alarm_reason:
+            parts.append(f"Reason: {self.alarm_reason}")
+        if self.trigger_type == TriggerType.SCHEDULE:
+            parts.append("This is a scheduled scan, not triggered by a specific alarm.")
+        return "\n".join(parts)
+
 
 def parse_event(event: dict[str, Any], config: FlareConfig) -> TriggerInfo:
     """Route a raw Lambda event to the appropriate trigger parser.

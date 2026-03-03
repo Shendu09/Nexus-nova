@@ -10,6 +10,12 @@ if TYPE_CHECKING:
     from mypy_boto3_logs import CloudWatchLogsClient
 
 
+def format_log_line(timestamp_ms: int, message: str) -> str:
+    """Format a CloudWatch log event into an ``ISO-timestamp message`` line."""
+    dt = datetime.fromtimestamp(timestamp_ms / 1000, tz=UTC)
+    return f"{dt.isoformat()} {message.rstrip(chr(10))}"
+
+
 def resolve_log_groups(
     patterns: list[str],
     *,
@@ -78,10 +84,9 @@ def fetch_logs(
     while True:
         response = logs_client.filter_log_events(**kwargs)  # type: ignore[arg-type]
         for event in response.get("events", []):
-            ts = event.get("timestamp", 0)
-            msg = event.get("message", "").rstrip("\n")
-            dt = datetime.fromtimestamp(ts / 1000, tz=UTC)
-            lines.append(f"{dt.isoformat()} {msg}")
+            lines.append(
+                format_log_line(event.get("timestamp", 0), event.get("message", ""))
+            )
 
         next_token = response.get("nextToken")
         if not next_token:

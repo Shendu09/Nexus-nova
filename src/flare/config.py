@@ -69,9 +69,9 @@ class FlareConfig:
     def litellm_model(self) -> str:
         """Return the model ID formatted for litellm.
 
-        If ``nova_model_id`` already contains a provider prefix (e.g.
-        ``gemini/gemini-2.5-flash``), it is returned as-is.  Otherwise
-        ``bedrock/`` is prepended for Bedrock routing.
+        If ``nova_model_id`` already contains a provider prefix it is
+        returned as-is.  Otherwise ``bedrock/`` is prepended for
+        Bedrock routing.
         """
         if "/" in self.nova_model_id:
             return self.nova_model_id

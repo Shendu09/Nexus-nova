@@ -1,10 +1,10 @@
 # Voice Setup Guide
 
-Flare's voice pipeline -- Amazon Connect, Lex V2 with Nova 2 Sonic speech-to-speech, and the contact flow -- is deployed as a separate CloudFormation stack (`voice-template.yaml`). All voice interactions use Nova 2 Sonic S2S. The Makefile handles provisioning, Nova Sonic configuration, and wiring automatically.
+Flare's voice pipeline (Amazon Connect, Lex V2 with Nova 2 Sonic speech-to-speech, and the contact flow) is deployed as a separate CloudFormation stack (`voice-template.yaml`). All voice interactions use Nova 2 Sonic S2S. The Makefile handles provisioning, Nova Sonic configuration, and wiring automatically.
 
 **Region**: All resources are created in the deployment region. Nova 2 Sonic requires **us-east-1** or **us-west-2**.
 
-**Time estimate**: ~5 minutes (deploy command + wait for provisioning).
+**Time estimate**: Approximately 5 minutes (deploy command plus wait for provisioning).
 
 ---
 
@@ -15,7 +15,7 @@ Flare's voice pipeline -- Amazon Connect, Lex V2 with Nova 2 Sonic speech-to-spe
 2. **Enable Nova model access in Bedrock**
 
    Open the [Amazon Bedrock console](https://console.aws.amazon.com/bedrock/home?region=us-east-1#/modelaccess) in us-east-1 and enable:
-   - Amazon Nova 2 Lite (log analysis + reasoning)
+   - Amazon Nova 2 Lite (log analysis and reasoning)
    - Amazon Nova Multimodal Embeddings (Cordon anomaly detection)
    - Amazon Nova 2 Sonic (voice conversation)
 
@@ -29,6 +29,7 @@ Flare's voice pipeline -- Amazon Connect, Lex V2 with Nova 2 Sonic speech-to-spe
 
 ```bash
 make deploy-voice \
+  IMAGE_URI=<your-ecr-uri> \
   ONCALL_PHONE="+15551234567" \
   LOG_GROUP_PATTERNS="/aws/lambda/*"
 ```
@@ -50,10 +51,9 @@ Each async step (locale build, version creation) is polled until complete, with 
 |----------|----------------|
 | Amazon Connect instance | Outbound calling enabled, managed identity |
 | US DID phone number | Claimed automatically, used as caller ID |
-| Lex V2 bot | FlareTriage with Nova 2 Sonic S2S, intents, and utterances |
-| Contact flow | Set Voice (Generative), Lambda invoke, Nova Sonic briefing + conversation |
+| Lex V2 bot | FlareCommander with Nova 2 Sonic S2S, intents, and utterances |
+| Contact flow | Set Voice (Generative), Lambda invoke, Nova Sonic briefing and conversation |
 | DynamoDB table | Incident state and pre-fetched investigation cache |
-| SSM parameter | Stores Connect config (instance ID, flow ID, phone number) for the base stack |
 | Lambda permissions | Connect and Lex can invoke the voice handler |
 
 ### Parameters
@@ -62,8 +62,8 @@ Each async step (locale build, version creation) is polled until complete, with 
 |-----------|---------|-------------|
 | `ONCALL_PHONE` | *required* | Engineer's phone number in E.164 format (e.g., `+15551234567`) |
 | `LOG_GROUP_PATTERNS` | *required* | Must match the base stack's log group patterns |
+| `IMAGE_URI` | *required* | ECR container image URI (should match the base stack) |
 | `CONNECT_INSTANCE_ID` | `""` | Reuse an existing Connect instance (leave empty to create one) |
-| `ECR_IMAGE_URI` | private ECR (pinned in Makefile) | Container image URI (should match the base stack) |
 
 ---
 
@@ -71,6 +71,7 @@ Each async step (locale build, version creation) is polled until complete, with 
 
 ```bash
 make deploy-all \
+  IMAGE_URI=<your-ecr-uri> \
   EMAIL=oncall@example.com \
   LOG_GROUP_PATTERNS="/aws/lambda/*" \
   ENABLE_ALARM=true \
@@ -94,10 +95,10 @@ aws cloudformation describe-stacks \
 ```
 
 You should see:
-- `FlareConnectInstanceId` -- the provisioned Connect instance
-- `FlarePhoneNumber` -- the claimed DID number
-- `FlareBotId` -- the Lex bot ID
-- `FlareVoiceHandlerArn` -- the voice Lambda function
+- `FlareConnectInstanceId` - the provisioned Connect instance
+- `FlarePhoneNumber` - the claimed DID number
+- `FlareBotId` - the Lex bot ID
+- `FlareVoiceHandlerArn` - the voice Lambda function
 
 Verify Nova Sonic is active:
 
@@ -119,14 +120,11 @@ You should see `speechFoundationModel.modelArn` pointing to `amazon.nova-2-sonic
 Trigger a test incident using the demo resources:
 
 ```bash
-# Deploy the demo failing Lambda (if not already deployed)
-aws cloudformation deploy \
-  --template-file demo/demo-template.yaml \
-  --stack-name flare-demo \
-  --capabilities CAPABILITY_IAM
+# Deploy the demo ECS/RDS infrastructure (if not already deployed)
+make deploy-demo
 
-# Generate errors and wait for the alarm to fire
-bash demo/trigger.sh
+# Simulate a network partition
+make break-demo
 ```
 
 Watch the logs:
@@ -139,18 +137,18 @@ aws logs tail /aws/lambda/flare-flare --follow --region us-east-1
 aws logs tail /aws/lambda/flare-voice-flare --follow --region us-east-1
 ```
 
-Your phone should ring within ~30 seconds of the alarm firing. Nova Sonic delivers the RCA briefing and then listens for your follow-up questions.
+Your phone should ring within approximately 30 seconds of the alarm firing. Nova Sonic delivers the RCA briefing and then listens for your follow-up questions.
 
 ---
 
 ## How the Voice Flow Works
 
-1. **Alarm fires** -- EventBridge triggers the Flare Lambda
-2. **Analysis** -- Cordon + Nova Embeddings reduce logs, Nova 2 Lite generates RCA
-3. **Pre-fetch** -- Nova 2 Lite predicts follow-up questions, CloudWatch data is cached in DynamoDB
-4. **Outbound call** -- Amazon Connect calls the on-call engineer (parallel with pre-fetch)
-5. **Briefing** -- Contact flow invokes the briefing Lambda to fetch the RCA, then hands off to the Lex bot. Nova 2 Sonic delivers the RCA as its opening statement.
-6. **Conversation** -- The engineer asks questions. Lex classifies intents, the fulfillment Lambda retrieves data (cache-first, live fallback), Nova 2 Lite reasons about it, and Nova 2 Sonic speaks the answer.
+1. **Alarm fires**: EventBridge triggers the Flare Lambda
+2. **Analysis**: Cordon and Nova Embeddings reduce logs, Nova 2 Lite generates RCA
+3. **Pre-fetch**: Nova 2 Lite predicts follow-up questions, CloudWatch data is cached in DynamoDB
+4. **Outbound call**: Amazon Connect calls the on-call engineer (parallel with pre-fetch)
+5. **Briefing**: Contact flow invokes the briefing Lambda to fetch the RCA, then hands off to the Lex bot. Nova 2 Sonic delivers the RCA as its opening statement.
+6. **Conversation**: The engineer asks questions. Lex classifies intents, the fulfillment Lambda retrieves data (cache-first, live fallback), Nova 2 Lite reasons about it, and Nova 2 Sonic speaks the answer.
 
 All voice output goes through Nova 2 Sonic speech-to-speech. No separate TTS engine is used.
 
@@ -163,7 +161,7 @@ make teardown-voice    # voice stack only
 make teardown-all      # both stacks
 ```
 
-This deletes the voice CloudFormation stack, which removes the Connect instance, phone number, Lex bot, DynamoDB table, voice handler Lambda, and all associated IAM roles. No lingering charges.
+This deletes the voice CloudFormation stack, which removes the Connect instance, phone number, Lex bot, DynamoDB table, voice handler Lambda, and all associated IAM roles.
 
 ---
 
@@ -171,7 +169,7 @@ This deletes the voice CloudFormation stack, which removes the Connect instance,
 
 ### "CREATE_FAILED on FlareConnectInstance"
 
-- Connect instance creation is rate-limited (limited operations per 30-day window). If you've been creating/deleting instances frequently, wait and retry.
+- Connect instance creation is rate-limited (limited operations per 30-day window). If you've been creating and deleting instances frequently, wait and retry.
 - The instance alias must be globally unique. If `flare-{stack-name}` is taken, change the stack name.
 - To reuse an existing instance: `make deploy-voice CONNECT_INSTANCE_ID=<instance-id> ...`
 
@@ -189,10 +187,10 @@ This deletes the voice CloudFormation stack, which removes the Connect instance,
 
 - Check that the DynamoDB table has incident records with `prefetch_status: complete`
 - Check CloudWatch Logs for the voice handler Lambda for errors
-- The fulfillment Lambda has an 8-second Lex limit; cache hits take ~3s, cache misses ~5-6s
+- The fulfillment Lambda has an 8-second Lex limit; cache hits take roughly 3 seconds, cache misses roughly 5 to 6 seconds
 
 ### Nova Sonic not active
 
 - Ensure Nova 2 Sonic model access is enabled in Bedrock
-- `make deploy-voice` configures Nova Sonic, builds the locale, creates a versioned snapshot, and updates the alias automatically. If the deploy was interrupted mid-way, re-run `make deploy-voice` -- it is idempotent.
+- `make deploy-voice` configures Nova Sonic, builds the locale, creates a versioned snapshot, and updates the alias automatically. If the deploy was interrupted mid-way, re-run `make deploy-voice` since it is idempotent.
 - Verify with: `aws lexv2-models describe-bot-locale --bot-id <id> --bot-version <ver> --locale-id en_US --query 'unifiedSpeechSettings'`

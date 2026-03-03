@@ -18,8 +18,7 @@ def analyze_logs(
     """Reduce *log_text* to its most anomalous sections using Cordon.
 
     Writes the text to a temporary file, runs Cordon's
-    ``SemanticLogAnalyzer`` with the configured embedding backend
-    (Bedrock Nova Embeddings or local sentence-transformers), and
+    ``SemanticLogAnalyzer`` with Nova Embeddings on Bedrock, and
     returns XML containing the anomalous blocks and their scores.
     The temp file is cleaned up regardless of success or failure.
     """

@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import logging
+import re
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
 import boto3
+
+from flare.logs import format_log_line
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +32,7 @@ def query_metrics(
         cloudwatch_client = boto3.client("cloudwatch")
 
     end_time = datetime.now(tz=UTC)
-    start_time = end_time - __import__("datetime").timedelta(minutes=period_minutes)
+    start_time = end_time - timedelta(minutes=period_minutes)
 
     cw_dimensions: list[dict[str, str]] = [
         {"Name": k, "Value": v} for k, v in dimensions.items()
@@ -112,12 +115,10 @@ def query_logs(
         response = logs_client.filter_log_events(**kwargs)
         events = response.get("events", [])
 
-        sample_lines = []
-        for event in events:
-            ts = event.get("timestamp", 0)
-            msg = event.get("message", "").rstrip("\n")
-            dt = datetime.fromtimestamp(ts / 1000, tz=UTC)
-            sample_lines.append(f"{dt.isoformat()} {msg}")
+        sample_lines = [
+            format_log_line(event.get("timestamp", 0), event.get("message", ""))
+            for event in events
+        ]
 
         return {
             "log_group": log_group,
@@ -271,8 +272,6 @@ def _to_snake_case(name: str) -> str:
 
     Already-snake_case input passes through unchanged.
     """
-    import re
-
     name = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", name)
     name = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", name)
     return name.lower()

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from functools import cache
 from importlib.resources import files
 from typing import Any
 
@@ -15,16 +16,12 @@ from flare.config import FlareConfig
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
-_REASONING_PROMPT: str | None = None
 
-
+@cache
 def _load_reasoning_prompt() -> str:
     """Load and cache the reasoning system prompt from ``prompts/reasoning.txt``."""
-    global _REASONING_PROMPT  # noqa: PLW0603
-    if _REASONING_PROMPT is None:
-        resource = files("flare").joinpath("prompts/reasoning.txt")
-        _REASONING_PROMPT = resource.read_text(encoding="utf-8")
-    return _REASONING_PROMPT
+    resource = files("flare").joinpath("prompts/reasoning.txt")
+    return resource.read_text(encoding="utf-8")
 
 
 def _get_config() -> FlareConfig:

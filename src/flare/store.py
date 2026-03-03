@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import contextlib
+import json
 import logging
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -93,8 +95,6 @@ def update_cached_data(
     if dynamodb_client is None:
         dynamodb_client = boto3.client("dynamodb")
 
-    import json
-
     dynamodb_client.update_item(
         TableName=config.incidents_table_name,
         Key={"incident_id": {"S": incident_id}},
@@ -109,8 +109,6 @@ def update_cached_data(
 
 def _deserialize_item(item: dict[str, Any]) -> dict[str, Any]:
     """Flatten DynamoDB attribute-value format into plain dicts."""
-    import json
-
     result: dict[str, Any] = {}
     for key, value in item.items():
         if "S" in value:
@@ -125,8 +123,6 @@ def _deserialize_item(item: dict[str, Any]) -> dict[str, Any]:
             result[key] = value
 
     if "cached_data" in result and isinstance(result["cached_data"], str):
-        import contextlib
-
         with contextlib.suppress(json.JSONDecodeError, TypeError):
             result["cached_data"] = json.loads(result["cached_data"])
 

@@ -19,10 +19,9 @@ Parameters:
 
   # --- Container ---
 
-  EcrImageUri:
+  ImageUri:
     Type: String
-    Default: 019107478361.dkr.ecr.us-east-1.amazonaws.com/flare:latest
-    Description: Container image URI (private ECR)
+    Description: ECR container image URI for the Flare Lambda function
 
   # --- Triggers (enable any combination) ---
 
@@ -236,7 +235,7 @@ Resources:
       FunctionName: !Sub "flare-${AWS::StackName}"
       PackageType: Image
       Code:
-        ImageUri: !Ref EcrImageUri
+        ImageUri: !Ref ImageUri
       Role: !GetAtt FlareFunctionRole.Arn
       MemorySize: !Ref LambdaMemoryMB
       Timeout: !Ref LambdaTimeoutSeconds

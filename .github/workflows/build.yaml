@@ -8,8 +8,6 @@ on:
     branches: [main]
 
 env:
-  AWS_ACCOUNT_ID: "019107478361"
-  ECR_REPO: flare
   GHCR_IMAGE: ghcr.io/${{ github.repository_owner }}/flare
 
 jobs:
@@ -30,7 +28,7 @@ jobs:
 
   publish-ghcr:
     needs: test
-    if: github.event_name == 'pull_request' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -47,53 +45,8 @@ jobs:
 
       - name: Build and push to GHCR
         run: |
-          docker build -t "$GHCR_IMAGE:${{ github.sha }}" .
-
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            docker tag "$GHCR_IMAGE:${{ github.sha }}" "$GHCR_IMAGE:pr-${{ github.event.number }}"
-            docker push "$GHCR_IMAGE:pr-${{ github.event.number }}"
-          fi
-
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            TAG="${GITHUB_REF#refs/tags/}"
-            docker tag "$GHCR_IMAGE:${{ github.sha }}" "$GHCR_IMAGE:$TAG"
-            docker tag "$GHCR_IMAGE:${{ github.sha }}" "$GHCR_IMAGE:latest"
-            docker push "$GHCR_IMAGE:$TAG"
-            docker push "$GHCR_IMAGE:latest"
-          fi
-
-  publish-ecr:
-    needs: test
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
-
-      - uses: aws-actions/amazon-ecr-login@v2
-        id: ecr
-
-      - name: Ensure ECR repo exists
-        run: |
-          aws ecr describe-repositories --repository-names "$ECR_REPO" 2>/dev/null || \
-            aws ecr create-repository --repository-name "$ECR_REPO"
-
-      - name: Build and push to ECR
-        env:
-          REGISTRY: ${{ steps.ecr.outputs.registry }}
-        run: |
-          IMAGE="$REGISTRY/$ECR_REPO"
           TAG="${GITHUB_REF#refs/tags/}"
-          docker build -t "$IMAGE:$TAG" .
-          docker tag "$IMAGE:$TAG" "$IMAGE:latest"
-          docker push "$IMAGE:$TAG"
-          docker push "$IMAGE:latest"
+          docker build -t "$GHCR_IMAGE:$TAG" .
+          docker tag "$GHCR_IMAGE:$TAG" "$GHCR_IMAGE:latest"
+          docker push "$GHCR_IMAGE:$TAG"
+          docker push "$GHCR_IMAGE:latest"

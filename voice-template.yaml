@@ -9,10 +9,9 @@ Parameters:
     Default: flare
     Description: Name of the base Flare stack (used for DynamoDB table and SSM naming)
 
-  EcrImageUri:
+  ImageUri:
     Type: String
-    Default: 019107478361.dkr.ecr.us-east-1.amazonaws.com/flare:latest
-    Description: Container image URI (private ECR, must match the base stack)
+    Description: ECR container image URI (must match the base stack)
 
   OncallPhone:
     Type: String
@@ -164,7 +163,7 @@ Resources:
       FunctionName: !Sub "flare-voice-${BaseStackName}"
       PackageType: Image
       Code:
-        ImageUri: !Ref EcrImageUri
+        ImageUri: !Ref ImageUri
       ImageConfig:
         Command:
           - "flare.voice_handler.voice_dispatch"

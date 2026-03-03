@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from functools import cache
 from importlib.resources import files
 from typing import TYPE_CHECKING, Any
 
@@ -16,18 +17,15 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_PREFETCH_PROMPT: str | None = None
 _QUERY_TIMEOUT_SECONDS = 5
 _MAX_WORKERS = 8
 
 
+@cache
 def _load_prefetch_prompt() -> str:
     """Load and cache the pre-fetch system prompt from ``prompts/prefetch.txt``."""
-    global _PREFETCH_PROMPT  # noqa: PLW0603
-    if _PREFETCH_PROMPT is None:
-        resource = files("flare").joinpath("prompts/prefetch.txt")
-        _PREFETCH_PROMPT = resource.read_text(encoding="utf-8")
-    return _PREFETCH_PROMPT
+    resource = files("flare").joinpath("prompts/prefetch.txt")
+    return resource.read_text(encoding="utf-8")
 
 
 def run(
@@ -62,14 +60,8 @@ def plan(analysis: str, trigger: TriggerInfo, config: FlareConfig) -> dict[str, 
     """
     system_prompt = _load_prefetch_prompt()
 
-    trigger_parts = [f"Trigger type: {trigger.trigger_type.value}"]
-    if trigger.alarm_name:
-        trigger_parts.append(f"Alarm: {trigger.alarm_name}")
-    if trigger.alarm_reason:
-        trigger_parts.append(f"Reason: {trigger.alarm_reason}")
-
     user_prompt = (
-        f"--- TRIGGER CONTEXT ---\n{chr(10).join(trigger_parts)}\n\n"
+        f"--- TRIGGER CONTEXT ---\n{trigger.format_context()}\n\n"
         f"--- LOG GROUPS ---\n{chr(10).join(config.log_group_patterns)}\n\n"
         f"--- INCIDENT ANALYSIS ---\n{analysis}"
     )

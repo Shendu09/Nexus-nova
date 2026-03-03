@@ -1,5 +1,5 @@
 .PHONY: deploy deploy-voice deploy-all teardown teardown-voice teardown-all \
-       deploy-demo-infra teardown-demo-infra break-demo fix-demo test lint
+       setup-image deploy-demo teardown-demo break-demo fix-demo test lint
 
 STACK_NAME := flare
 REGION     ?= us-east-1
@@ -25,23 +25,21 @@ TOKEN_BUDGET     ?=
 ONCALL_PHONE         ?=
 CONNECT_INSTANCE_ID  ?=
 
-# Container image (default :latest; override to pin version)
-ECR_IMAGE_URI ?= 019107478361.dkr.ecr.us-east-1.amazonaws.com/flare:v0.1.18
+# Public image on GHCR (canonical source)
+GHCR_IMAGE ?= ghcr.io/calebevans/flare:latest
+
+# ECR image URI in your account (populated by `make setup-image`)
+IMAGE_URI ?=
 
 # Container runtime (docker, podman, etc.)
 CONTAINER_RT ?= $(shell command -v podman 2>/dev/null || command -v docker 2>/dev/null)
 
-# Demo infrastructure
-DEMO_INFRA_STACK := flare-demo-infra
-DEMO_ECR_REPO    := 019107478361.dkr.ecr.$(REGION).amazonaws.com/flare-demo
-DEMO_IMAGE_TAG   ?= latest
-
 define check_param
-$(if $($(1)),,$(error $(1) is required. Usage: make deploy $(1)=<value>))
+$(if $($(1)),,$(error $(1) is required. Usage: make $(MAKECMDGOALS) $(1)=<value>))
 endef
 
 # Build the --parameter-overrides string, only including params that are set
-OVERRIDES := EcrImageUri=$(ECR_IMAGE_URI)
+OVERRIDES := ImageUri=$(IMAGE_URI)
 ifneq ($(LOG_GROUP_PATTERNS),)
 	OVERRIDES += LogGroupPatterns=$(LOG_GROUP_PATTERNS)
 endif
@@ -76,7 +74,30 @@ ifneq ($(TOKEN_BUDGET),)
 	OVERRIDES += TokenBudget=$(TOKEN_BUDGET)
 endif
 
+# ---------- Image Setup ----------
+
+setup-image:
+	$(call check_param,REGION)
+	@ACCOUNT_ID=$$(aws sts get-caller-identity --query Account --output text) && \
+	ECR_REPO="$$ACCOUNT_ID.dkr.ecr.$(REGION).amazonaws.com/flare" && \
+	echo "==> Ensuring ECR repository exists..." && \
+	aws ecr create-repository --repository-name flare --region $(REGION) 2>/dev/null || true && \
+	echo "==> Pulling $(GHCR_IMAGE)..." && \
+	$(CONTAINER_RT) pull $(GHCR_IMAGE) && \
+	echo "==> Tagging for ECR..." && \
+	$(CONTAINER_RT) tag $(GHCR_IMAGE) "$$ECR_REPO:latest" && \
+	echo "==> Logging in to ECR..." && \
+	aws ecr get-login-password --region $(REGION) | $(CONTAINER_RT) login --username AWS --password-stdin "$$ECR_REPO" && \
+	echo "==> Pushing to ECR..." && \
+	$(CONTAINER_RT) push "$$ECR_REPO:latest" && \
+	echo "" && \
+	echo "Done. Use this IMAGE_URI for deploy commands:" && \
+	echo "  IMAGE_URI=$$ECR_REPO:latest"
+
+# ---------- Deploy ----------
+
 deploy:
+	$(call check_param,IMAGE_URI)
 	$(call check_param,EMAIL)
 	$(call check_param,LOG_GROUP_PATTERNS)
 	aws cloudformation deploy \
@@ -88,9 +109,10 @@ deploy:
 	@echo "Done. Check your email to confirm the SNS subscription."
 
 deploy-voice:
+	$(call check_param,IMAGE_URI)
 	$(call check_param,ONCALL_PHONE)
 	$(call check_param,LOG_GROUP_PATTERNS)
-	$(eval VOICE_OVERRIDES := BaseStackName=$(STACK_NAME) OncallPhone=$(ONCALL_PHONE) LogGroupPatterns=$(LOG_GROUP_PATTERNS) EcrImageUri=$(ECR_IMAGE_URI))
+	$(eval VOICE_OVERRIDES := BaseStackName=$(STACK_NAME) OncallPhone=$(ONCALL_PHONE) LogGroupPatterns=$(LOG_GROUP_PATTERNS) ImageUri=$(IMAGE_URI))
 ifneq ($(CONNECT_INSTANCE_ID),)
 	$(eval VOICE_OVERRIDES += ConnectInstanceId=$(CONNECT_INSTANCE_ID))
 endif
@@ -157,7 +179,18 @@ endif
 		--parameter-overrides $(OVERRIDES) ConnectEnabled=true OncallPhone=$(ONCALL_PHONE)
 	@echo "Voice pipeline active. Your phone will ring on incidents."
 
-deploy-all: deploy deploy-voice
+deploy-all:
+	$(call check_param,IMAGE_URI)
+	$(call check_param,EMAIL)
+	$(call check_param,LOG_GROUP_PATTERNS)
+	$(call check_param,ONCALL_PHONE)
+	@$(MAKE) deploy IMAGE_URI=$(IMAGE_URI) EMAIL=$(EMAIL) LOG_GROUP_PATTERNS=$(LOG_GROUP_PATTERNS) \
+		ENABLE_ALARM=$(ENABLE_ALARM) ALARM_NAME_PREFIX=$(ALARM_NAME_PREFIX) \
+		ENABLE_SCHEDULE=$(ENABLE_SCHEDULE) ENABLE_SUBSCRIPTION=$(ENABLE_SUBSCRIPTION)
+	@$(MAKE) deploy-voice IMAGE_URI=$(IMAGE_URI) ONCALL_PHONE=$(ONCALL_PHONE) \
+		LOG_GROUP_PATTERNS=$(LOG_GROUP_PATTERNS)
+
+# ---------- Teardown ----------
 
 teardown-voice:
 	aws cloudformation delete-stack --stack-name $(STACK_NAME)-voice --region $(REGION)
@@ -173,32 +206,36 @@ teardown-all: teardown-voice
 	aws cloudformation delete-stack --stack-name $(STACK_NAME) --region $(REGION)
 	@echo "All stacks deletion initiated."
 
-# ---------- Demo infrastructure (real ECS + RDS) ----------
+# ---------- Demo (ECS + RDS) ----------
 
-deploy-demo-infra:
-	@echo "==> Creating demo ECR repo (if needed)..."
-	@aws ecr create-repository --repository-name flare-demo --region $(REGION) 2>/dev/null || true
-	@echo "==> Building demo app image..."
-	$(CONTAINER_RT) build -t $(DEMO_ECR_REPO):$(DEMO_IMAGE_TAG) -f demo/Dockerfile.demo demo/
-	@echo "==> Logging in to ECR..."
-	@aws ecr get-login-password --region $(REGION) | $(CONTAINER_RT) login --username AWS --password-stdin $(DEMO_ECR_REPO)
-	@echo "==> Pushing demo image..."
-	$(CONTAINER_RT) push $(DEMO_ECR_REPO):$(DEMO_IMAGE_TAG)
-	@echo "==> Deploying demo infrastructure (VPC, RDS, ECS — takes ~5 min)..."
+DEMO_INFRA_STACK := flare-demo-infra
+
+deploy-demo:
+	@ACCOUNT_ID=$$(aws sts get-caller-identity --query Account --output text) && \
+	DEMO_ECR_REPO="$$ACCOUNT_ID.dkr.ecr.$(REGION).amazonaws.com/flare-demo" && \
+	echo "==> Creating demo ECR repo (if needed)..." && \
+	aws ecr create-repository --repository-name flare-demo --region $(REGION) 2>/dev/null || true && \
+	echo "==> Building demo app image..." && \
+	$(CONTAINER_RT) build -t "$$DEMO_ECR_REPO:latest" -f demo/Dockerfile.demo demo/ && \
+	echo "==> Logging in to ECR..." && \
+	aws ecr get-login-password --region $(REGION) | $(CONTAINER_RT) login --username AWS --password-stdin "$$DEMO_ECR_REPO" && \
+	echo "==> Pushing demo image..." && \
+	$(CONTAINER_RT) push "$$DEMO_ECR_REPO:latest" && \
+	echo "==> Deploying demo infrastructure (VPC, RDS, ECS, takes ~5 min)..." && \
 	aws cloudformation deploy \
 		--template-file demo/demo-infra-template.yaml \
 		--stack-name $(DEMO_INFRA_STACK) \
 		--region $(REGION) \
 		--capabilities CAPABILITY_IAM \
-		--parameter-overrides DemoImageUri=$(DEMO_ECR_REPO):$(DEMO_IMAGE_TAG)
-	@echo ""
-	@echo "Demo infrastructure deployed. Verify healthy logs:"
-	@echo "  aws logs tail /ecs/flare-demo --follow --region $(REGION)"
-	@echo ""
-	@echo "Trigger a network partition:"
-	@echo "  make break-demo"
+		--parameter-overrides DemoImageUri="$$DEMO_ECR_REPO:latest" && \
+	echo "" && \
+	echo "Demo infrastructure deployed. Verify healthy logs:" && \
+	echo "  aws logs tail /ecs/flare-demo --follow --region $(REGION)" && \
+	echo "" && \
+	echo "Trigger a network partition:" && \
+	echo "  make break-demo"
 
-teardown-demo-infra:
+teardown-demo:
 	aws cloudformation delete-stack --stack-name $(DEMO_INFRA_STACK) --region $(REGION)
 	@echo "Demo infra stack deletion initiated. Waiting..."
 	aws cloudformation wait stack-delete-complete --stack-name $(DEMO_INFRA_STACK) --region $(REGION) 2>/dev/null || true
@@ -210,7 +247,7 @@ break-demo:
 fix-demo:
 	@bash demo/trigger.sh fix
 
-# ---------- Tests ----------
+# ---------- Development ----------
 
 test:
 	pytest -v

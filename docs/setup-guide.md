@@ -6,11 +6,33 @@ This guide walks through deploying Flare and configuring triggers for common AWS
 
 - An AWS account with [Amazon Bedrock access](https://docs.aws.amazon.com/bedrock/latest/userguide/model-access.html) enabled for Amazon Nova models in your region
 - AWS CLI installed and configured (`aws configure`)
-- The CloudWatch Log Groups you want to monitor must already exist (Flare reads from them, it doesn't create them)
+- Docker or Podman (for `make setup-image`)
+- The CloudWatch Log Groups you want to monitor must already exist (Flare reads from them, it does not create them)
 
-## Step 1: Deploy Flare
+## Step 1: Copy the Image to ECR
+
+Lambda requires container images to be stored in ECR. Pull the public image from GHCR and push it to your account:
+
+```bash
+make setup-image REGION=us-east-1
+```
+
+This creates an ECR repository named `flare`, pulls the image from GHCR, and pushes it to your account. It prints the `IMAGE_URI` to use in subsequent deploy commands.
+
+## Step 2: Deploy Flare
 
 Deploy with at least one trigger enabled. This example enables the alarm trigger for alarms prefixed with `prod-`:
+
+```bash
+make deploy \
+  IMAGE_URI=<your-ecr-uri> \
+  EMAIL=you@example.com \
+  LOG_GROUP_PATTERNS="/aws/lambda/*" \
+  ENABLE_ALARM=true \
+  ALARM_NAME_PREFIX=prod-
+```
+
+Or directly with CloudFormation:
 
 ```bash
 aws cloudformation deploy \
@@ -19,17 +41,18 @@ aws cloudformation deploy \
   --region us-east-1 \
   --capabilities CAPABILITY_IAM \
   --parameter-overrides \
+    ImageUri=<your-ecr-uri> \
     LogGroupPatterns="/aws/lambda/*" \
     NotificationEmail=you@example.com \
     EnableAlarmTrigger=true \
     AlarmNamePrefix=prod-
 ```
 
-After deploying, check your email and **confirm the SNS subscription**. You won't receive any notifications until you do.
+After deploying, check your email and **confirm the SNS subscription**. You will not receive any notifications until you do.
 
-**Important:** No triggers are enabled by default. You must explicitly enable at least one, otherwise Flare deploys but never runs. This is intentional -- you control exactly when Flare analyzes your logs.
+**Important:** No triggers are enabled by default. You must explicitly enable at least one, otherwise Flare deploys but never runs. This is intentional so you control exactly when Flare analyzes your logs.
 
-## Step 2: Choose Your Triggers
+## Step 3: Choose Your Triggers
 
 Flare supports three trigger modes. You can enable any combination.
 
@@ -45,21 +68,17 @@ Flare analyzes logs when specific CloudWatch Alarms fire. Use `AlarmNamePrefix` 
 **Example: react to production alarms only:**
 
 ```bash
-aws cloudformation deploy \
-  --template-file template.yaml \
-  --stack-name flare \
-  --region us-east-1 \
-  --capabilities CAPABILITY_IAM \
-  --parameter-overrides \
-    LogGroupPatterns="/aws/lambda/*,/aws/ecs/*" \
-    NotificationEmail=you@example.com \
-    EnableAlarmTrigger=true \
-    AlarmNamePrefix=prod-
+make deploy \
+  IMAGE_URI=<your-ecr-uri> \
+  EMAIL=you@example.com \
+  LOG_GROUP_PATTERNS="/aws/lambda/*,/aws/ecs/*" \
+  ENABLE_ALARM=true \
+  ALARM_NAME_PREFIX=prod-
 ```
 
 When a matching alarm transitions to ALARM state, Flare pulls logs from all configured log groups and analyzes them. The notification includes the alarm name and details.
 
-**How it works:** Flare doesn't create alarms -- you create them separately through CloudWatch for whatever metrics matter to you (CPU utilization, error count, latency, etc.). Name them with a consistent prefix (e.g., `prod-cpu-high`, `prod-error-rate`) so Flare can filter to just the alarms you care about.
+**How it works:** Flare does not create alarms. You create them separately through CloudWatch for whatever metrics matter to you (CPU utilization, error count, latency, etc.). Name them with a consistent prefix (e.g., `prod-cpu-high`, `prod-error-rate`) so Flare can filter to just the alarms you care about.
 
 If `AlarmNamePrefix` is empty, Flare reacts to *all* alarms in your account, which is usually too broad.
 
@@ -76,23 +95,19 @@ Flare runs on a timer and scans all log groups matching your patterns. Useful fo
 **Example: scan every 30 minutes, looking back 15 minutes each time:**
 
 ```bash
-aws cloudformation deploy \
-  --template-file template.yaml \
-  --stack-name flare \
-  --region us-east-1 \
-  --capabilities CAPABILITY_IAM \
-  --parameter-overrides \
-    LogGroupPatterns="/aws/lambda/*" \
-    NotificationEmail=you@example.com \
-    EnableSchedule=true \
-    ScheduleExpression="rate(30 minutes)" \
-    LookbackMinutes=15
+make deploy \
+  IMAGE_URI=<your-ecr-uri> \
+  EMAIL=you@example.com \
+  LOG_GROUP_PATTERNS="/aws/lambda/*" \
+  ENABLE_SCHEDULE=true \
+  SCHEDULE_EXPRESSION="rate(30 minutes)" \
+  LOOKBACK_MINUTES=15
 ```
 
 Schedule expressions follow [EventBridge syntax](https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-schedule-expressions.html):
-- `rate(1 hour)` -- every hour
-- `rate(30 minutes)` -- every 30 minutes
-- `cron(0 9 * * ? *)` -- daily at 9 AM UTC
+- `rate(1 hour)` every hour
+- `rate(30 minutes)` every 30 minutes
+- `cron(0 9 * * ? *)` daily at 9 AM UTC
 
 **Note:** On scheduled scans, if Flare determines the logs are healthy, it skips the notification. You only get emailed when something is worth investigating.
 
@@ -109,24 +124,20 @@ Flare can react immediately when specific patterns appear in a log group. CloudW
 **Example: trigger immediately when ERROR or FATAL appears in your app's logs:**
 
 ```bash
-aws cloudformation deploy \
-  --template-file template.yaml \
-  --stack-name flare \
-  --region us-east-1 \
-  --capabilities CAPABILITY_IAM \
-  --parameter-overrides \
-    LogGroupPatterns="/aws/lambda/*" \
-    NotificationEmail=you@example.com \
-    EnableSubscription=true \
-    SubscriptionLogGroup=/aws/lambda/my-critical-app \
-    SubscriptionFilterPattern="?ERROR ?FATAL ?CRITICAL"
+make deploy \
+  IMAGE_URI=<your-ecr-uri> \
+  EMAIL=you@example.com \
+  LOG_GROUP_PATTERNS="/aws/lambda/*" \
+  ENABLE_SUBSCRIPTION=true \
+  SUBSCRIPTION_LOG_GROUP=/aws/lambda/my-critical-app \
+  SUBSCRIPTION_FILTER="?ERROR ?FATAL ?CRITICAL"
 ```
 
 Filter patterns follow [CloudWatch Logs filter syntax](https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/FilterAndPatternSyntax.html):
-- `?ERROR ?FATAL` -- matches lines containing ERROR *or* FATAL
-- `"OutOfMemoryError"` -- matches the exact string
-- `{ $.level = "ERROR" }` -- JSON pattern matching (for structured logs)
-- `""` (empty string) -- matches everything (not recommended, very noisy)
+- `?ERROR ?FATAL` matches lines containing ERROR *or* FATAL
+- `"OutOfMemoryError"` matches the exact string
+- `{ $.level = "ERROR" }` JSON pattern matching (for structured logs)
+- `""` (empty string) matches everything (not recommended, very noisy)
 
 **Limitation:** CloudFormation supports one subscription filter per stack. If you need filters on multiple log groups, deploy multiple stacks with different names:
 
@@ -135,6 +146,7 @@ Filter patterns follow [CloudWatch Logs filter syntax](https://docs.aws.amazon.c
 aws cloudformation deploy --stack-name flare-api \
   --template-file template.yaml --capabilities CAPABILITY_IAM \
   --parameter-overrides \
+    ImageUri=<your-ecr-uri> \
     LogGroupPatterns="/aws/lambda/api-*" \
     NotificationEmail=api-team@example.com \
     EnableSubscription=true \
@@ -144,13 +156,14 @@ aws cloudformation deploy --stack-name flare-api \
 aws cloudformation deploy --stack-name flare-workers \
   --template-file template.yaml --capabilities CAPABILITY_IAM \
   --parameter-overrides \
+    ImageUri=<your-ecr-uri> \
     LogGroupPatterns="/aws/ecs/workers/*" \
     NotificationEmail=platform-team@example.com \
     EnableSubscription=true \
     SubscriptionLogGroup=/aws/ecs/workers/processor
 ```
 
-## Step 3: Configure Log Group Patterns
+## Step 4: Configure Log Group Patterns
 
 The `LogGroupPatterns` parameter accepts exact names and prefix patterns (trailing `*`):
 
@@ -176,7 +189,7 @@ Patterns are resolved at invocation time, so new log groups that match are autom
 | VPC Flow Logs | `/aws/vpc/flowlogs` |
 | AppRunner | `/aws/apprunner/<service-name>/<service-id>` |
 
-## Step 4: Notifications
+## Step 5: Notifications
 
 Flare publishes analysis results to an SNS topic. By default it creates an email subscription, but SNS supports many delivery methods.
 
@@ -243,36 +256,41 @@ On scheduled scans, if Flare determines the logs are healthy, it skips the notif
 To change configuration, re-run the deploy command with new parameters. CloudFormation updates the stack in place:
 
 ```bash
-aws cloudformation deploy \
-  --template-file template.yaml \
-  --stack-name flare \
-  --region us-east-1 \
-  --capabilities CAPABILITY_IAM \
-  --parameter-overrides \
-    LogGroupPatterns="/aws/lambda/*,/aws/ecs/*" \
-    NotificationEmail=you@example.com \
-    ScheduleExpression="rate(15 minutes)" \
-    EnableAlarmTrigger=true
+make deploy \
+  IMAGE_URI=<your-ecr-uri> \
+  EMAIL=you@example.com \
+  LOG_GROUP_PATTERNS="/aws/lambda/*,/aws/ecs/*" \
+  ENABLE_ALARM=true
 ```
 
-## Step 5: Voice Pipeline (Optional)
+## Step 6: Voice Pipeline (Optional)
 
-Flare can call the on-call engineer by phone when an incident is detected, deliver the RCA briefing via Nova 2 Sonic speech-to-speech, and support interactive voice investigation -- all powered by Nova Sonic.
+Flare can call the on-call engineer by phone when an incident is detected, deliver the RCA briefing via Nova 2 Sonic speech-to-speech, and support interactive voice investigation.
 
-The voice pipeline is deployed as a separate CloudFormation stack. First deploy the base stack (Step 1), then deploy the voice stack:
+The voice pipeline is deployed as a separate CloudFormation stack. First deploy the base stack (Step 2), then deploy the voice stack:
 
 ```bash
 make deploy-voice \
+  IMAGE_URI=<your-ecr-uri> \
   ONCALL_PHONE="+15551234567" \
   LOG_GROUP_PATTERNS="/aws/lambda/*"
 ```
 
-This single command provisions everything with zero manual steps: Amazon Connect (instance + phone number), a Lex V2 bot with Nova 2 Sonic S2S, a contact flow, DynamoDB, and all wiring. The Makefile enables Nova Sonic, builds the bot locale, creates a versioned snapshot, updates the live alias with the fulfillment Lambda, and associates the bot with Connect -- all with polled waits so nothing races.
+Or deploy both at once:
+
+```bash
+make deploy-all \
+  IMAGE_URI=<your-ecr-uri> \
+  EMAIL=oncall@example.com \
+  LOG_GROUP_PATTERNS="/aws/lambda/*" \
+  ONCALL_PHONE="+15551234567"
+```
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `ONCALL_PHONE` | *required* | On-call engineer's phone number (E.164 format, e.g., `+15551234567`) |
 | `LOG_GROUP_PATTERNS` | *required* | Must match the base stack's log group patterns |
+| `IMAGE_URI` | *required* | ECR container image URI (should match the base stack) |
 | `CONNECT_INSTANCE_ID` | `""` | Reuse an existing Connect instance (leave empty to create one) |
 
 The only prerequisite beyond the base stack is enabling Nova 2 Sonic model access in Bedrock. See the [Voice Setup Guide](voice-setup-guide.md) for details.

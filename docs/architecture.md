@@ -70,10 +70,6 @@ flowchart TD
     RAW --> RCA
     RCA --> SNS["Publish to SNS"]
     RCA --> VP["Voice Pipeline"]
-
-    style EMB fill:#e8f0fe
-    style RCA fill:#e8f0fe
-    style VP fill:#fce8e6
 ```
 
 **How Cordon works**: When logs exceed the token budget, Cordon uses a sliding window approach. Each window of log lines is embedded using Nova Multimodal Embeddings, then scored for anomaly using k-nearest-neighbor density estimation. Windows with low density (semantically unusual compared to their neighbors) are flagged as anomalous. The anomaly percentile threshold is calculated dynamically to hit the target token budget.
@@ -97,18 +93,15 @@ flowchart TD
     M --> CACHE["Cache results\nin DynamoDB"]
     LG --> CACHE
     S --> CACHE
-
-    style PLAN fill:#e8f0fe
-    style CALL fill:#fce8e6
 ```
 
-**Timeline**: The pre-fetch and outbound call happen concurrently. Nova Lite returns a pre-fetch plan in ~3 seconds. The CloudWatch queries execute in parallel and complete in ~5-8 seconds. Meanwhile, the phone is ringing (15-30 seconds). By the time the engineer answers, the investigation data is already cached.
+**Timeline**: The pre-fetch and outbound call happen concurrently. Nova Lite returns a pre-fetch plan in approximately 3 seconds. The CloudWatch queries execute in parallel and typically complete in 5 to 8 seconds. Meanwhile, the phone is ringing (15 to 30 seconds). By the time the engineer answers, the investigation data is already cached.
 
 **Pre-fetch prompt**: Nova 2 Lite receives the RCA and alarm context and returns a structured JSON object listing the specific CloudWatch metrics (namespace, metric name, dimensions), log queries (log group, filter pattern), and resource status checks it recommends. It focuses on resources mentioned in the RCA plus 1-2 adjacent resources.
 
 ### Pipeline 3: Voice Conversation
 
-Delivers the RCA by phone and supports interactive investigation using Nova 2 Sonic speech-to-speech and a retrieve-then-reason pattern. All voice output goes through Nova Sonic -- no separate TTS engine is used.
+Delivers the RCA by phone and supports interactive investigation using Nova 2 Sonic speech-to-speech and a retrieve-then-reason pattern. All voice output goes through Nova Sonic; no separate TTS engine is used.
 
 ```mermaid
 flowchart TD
@@ -124,14 +117,11 @@ flowchart TD
     LIVE --> REASON
     REASON --> SPEAK["Nova 2 Sonic\nspeaks the answer"]
     SPEAK --> LEX
-
-    style REASON fill:#e8f0fe
-    style SPEAK fill:#fce8e6
 ```
 
 **Retrieve-then-reason**: The fulfillment Lambda does not format raw metric data into canned responses. Instead, it pulls the relevant data (from cache or live), then passes the engineer's original question, the data, and the full RCA context to Nova 2 Lite. The LLM generates a natural, analytical answer. This means subjective questions like "does it look like the database is overwhelmed?" get intelligent answers that correlate metrics with the incident context.
 
-**FallbackIntent**: Questions that don't match a specific Lex intent are routed to the FallbackIntent, which sends ALL cached data to Nova 2 Lite and lets it figure out what's relevant. This makes the conversation feel open-ended rather than constrained to predefined queries.
+**FallbackIntent**: Questions that do not match a specific Lex intent are routed to the FallbackIntent, which sends all cached data to Nova 2 Lite and lets it figure out what is relevant. This makes the conversation feel open-ended rather than constrained to predefined queries.
 
 ---
 
@@ -241,7 +231,7 @@ src/flare/
   prompts/
     triage.txt        System prompt for RCA generation
     prefetch.txt      Prompt for pre-fetch query planning
-    voice_system.txt  System prompt for Lex/Nova Sonic persona
+    voice_system.txt  Persona description for the Lex/Nova Sonic bot
     reasoning.txt     System prompt for retrieve-then-reason step
 ```
 
@@ -267,13 +257,11 @@ flowchart TD
     VH["voice_handler.py"] --> S
     VH --> T2
     VH --> C
+    VH --> L
 
     A --> C
     T --> C
     N --> C
-
-    style H fill:#fff2cc
-    style VH fill:#fce8e6
 ```
 
 The handler (`handler.py`) is the entry point. It calls modules left-to-right through the pipeline. The voice handler (`voice_handler.py`) is a separate Lambda entry point, called by Amazon Connect and Lex.
@@ -295,7 +283,7 @@ flowchart TD
         R1["IAM Role\n(Flare Function)"]
     end
 
-    subgraph voice [Voice Stack - voice-template.yaml]
+    subgraph voiceStack [Voice Stack - voice-template.yaml]
         VFN["Voice Handler Lambda\n(container image)"]
         DDB["DynamoDB Table\n(flare-incidents)"]
         CI["Connect Instance"]
@@ -303,7 +291,6 @@ flowchart TD
         CF["Contact Flow"]
         LB["Lex V2 Bot\n+ Nova 2 Sonic S2S"]
         R2["IAM Role\n(Voice Handler)"]
-        SSM["SSM Parameter\n(Connect config)"]
     end
 
     ER1 --> FN
@@ -323,9 +310,9 @@ The system uses two CloudFormation stacks:
 
 **Base stack** (`template.yaml`, deployed via `make deploy`): Flare analysis Lambda, SNS topic, EventBridge rules, subscription filter, IAM roles. This handles log analysis and notification independently of the voice layer.
 
-**Voice stack** (`voice-template.yaml`, deployed via `make deploy-voice`): Voice handler Lambda, DynamoDB table, Amazon Connect instance, phone number, contact flow, Lex V2 bot with Nova 2 Sonic S2S, IAM roles, and an SSM parameter that passes Connect configuration back to the base stack. Nova Sonic is configured via post-deploy CLI commands in the Makefile (CloudFormation cannot set `UnifiedSpeechSettings` and `VoiceSettings` in the same update).
+**Voice stack** (`voice-template.yaml`, deployed via `make deploy-voice`): Voice handler Lambda, DynamoDB table, Amazon Connect instance, phone number, contact flow, Lex V2 bot with Nova 2 Sonic S2S, IAM roles. Nova Sonic is configured via post-deploy CLI commands in the Makefile (CloudFormation cannot set `UnifiedSpeechSettings` and `VoiceSettings` in the same update).
 
-Both stacks use the same container image from private ECR. Teardown with `make teardown-all`.
+Both stacks use the same container image. Teardown with `make teardown-all`.
 
 ### DynamoDB Schema
 
@@ -348,13 +335,13 @@ Attributes:
     status[]         query_key, resource_type, resource_id, health, details
 ```
 
-Each cached item includes a `query_key` -- a human-readable label like "RDS connections for auth-db" used for fuzzy matching against the engineer's question.
+Each cached item includes a `query_key`, a human-readable label used for fuzzy matching against the engineer's question.
 
 ---
 
 ## Timing
 
-This diagram shows the typical timing of an end-to-end incident response, from alarm to first answered question.
+This diagram shows the approximate timing of an end-to-end incident response, from alarm to first answered question. Actual times vary based on log volume, network latency, and model response times.
 
 ```
 t=0s    CloudWatch Alarm fires
@@ -363,31 +350,31 @@ t=1-5s  Lambda fetches logs from CloudWatch
 t=5-8s  Cordon + Nova Embeddings reduces logs (if needed)
 t=8-12s Nova 2 Lite generates RCA
 t=12s   SNS notification sent (email/Slack)
-        ┌──────────────────────────────────────────────┐
-t=12s   │ PARALLEL:                                    │
-        │                                              │
-        │ Thread 1: Outbound call                      │
-        │   t=12s  StartOutboundVoiceContact           │
-        │   t=13s  Phone starts ringing                │
-        │   t=25s  Engineer answers                    │
-        │   t=26s  Nova Sonic delivers RCA briefing    │
-        │   t=40s  "What would you like to know?"      │
-        │                                              │
-        │ Thread 2: Pre-fetch                          │
-        │   t=12s  Nova 2 Lite generates pre-fetch plan│
-        │   t=15s  Execute 5-8 CloudWatch queries      │
-        │   t=20s  Cache populated in DynamoDB         │
-        │                                              │
-        └──────────────────────────────────────────────┘
+        +----------------------------------------------+
+t=12s   | PARALLEL:                                    |
+        |                                              |
+        | Thread 1: Outbound call                      |
+        |   t=12s  StartOutboundVoiceContact           |
+        |   t=13s  Phone starts ringing                |
+        |   t=25s  Engineer answers                    |
+        |   t=26s  Nova Sonic delivers RCA briefing    |
+        |   t=40s  "What would you like to know?"      |
+        |                                              |
+        | Thread 2: Pre-fetch                          |
+        |   t=12s  Nova 2 Lite generates pre-fetch plan|
+        |   t=15s  Execute 5-8 CloudWatch queries      |
+        |   t=20s  Cache populated in DynamoDB         |
+        |                                              |
+        +----------------------------------------------+
 t=42s   Engineer asks first question
 t=42.1s DynamoDB cache read (~100ms)
 t=44s   Nova 2 Lite reasons about data (~2s)
 t=45s   Nova 2 Sonic speaks the answer
 
-Total: alarm-to-answer in ~45 seconds
+Approximate total: alarm to answer in ~45 seconds
 ```
 
-The pre-fetch completes ~5 seconds before the engineer finishes hearing the RCA briefing, so cached data is always ready for the first question.
+The pre-fetch typically completes before the engineer finishes hearing the RCA briefing, so cached data is ready for the first question.
 
 ---
 
@@ -403,7 +390,7 @@ The pre-fetch completes ~5 seconds before the engineer finishes hearing the RCA 
 | Nova 2 Lite reasoning fails | Raw data instead of analysis | Catches exception, returns a basic data summary rather than LLM-generated answer. |
 | Cordon / embeddings fail | No log reduction | Falls back to truncating logs to fit token budget. RCA still generated from partial data. |
 
-The system is designed so that every failure path still results in the engineer receiving the RCA -- if not by voice, then by email.
+The system is designed so that every failure path still results in the engineer receiving the RCA. If not by voice, then by email.
 
 ---
 
