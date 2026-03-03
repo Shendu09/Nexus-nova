@@ -301,7 +301,9 @@ Resources:
           ]
         }
 
-  # SSM parameter created by post-deploy script (Makefile)
+  # SSM parameter /flare/{stack}/connect-config is written by the
+  # Makefile post-deploy steps (step 7/8) since it requires resolving
+  # the contact flow ID and E.164 phone number from the Connect API.
 
   # --- Lex V2 Bot with Nova 2 Sonic S2S ---
 

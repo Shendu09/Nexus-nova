@@ -124,9 +124,11 @@ endif
 		--parameter-overrides $(VOICE_OVERRIDES)
 	@echo "==> [1/7] Warming up voice handler Lambda..."
 	@aws lambda invoke --function-name flare-voice-$(STACK_NAME) --payload '{}' /dev/null --region $(REGION) 2>/dev/null || true
-	@echo "==> [2/7] Reading stack outputs..."
+	@echo "==> [2/8] Reading stack outputs..."
 	@INSTANCE_ARN=$$(aws cloudformation describe-stacks --stack-name $(STACK_NAME)-voice --region $(REGION) \
 		--query 'Stacks[0].Outputs[?OutputKey==`FlareConnectInstanceArn`].OutputValue' --output text) && \
+	INSTANCE_ID=$$(aws cloudformation describe-stacks --stack-name $(STACK_NAME)-voice --region $(REGION) \
+		--query 'Stacks[0].Outputs[?OutputKey==`FlareConnectInstanceId`].OutputValue' --output text) && \
 	BOT_ALIAS_ARN=$$(aws cloudformation describe-stacks --stack-name $(STACK_NAME)-voice --region $(REGION) \
 		--query 'Stacks[0].Outputs[?OutputKey==`FlareBotAliasArn`].OutputValue' --output text) && \
 	BOT_ID=$$(aws cloudformation describe-stacks --stack-name $(STACK_NAME)-voice --region $(REGION) \
@@ -134,12 +136,12 @@ endif
 	LAMBDA_ARN=$$(aws cloudformation describe-stacks --stack-name $(STACK_NAME)-voice --region $(REGION) \
 		--query 'Stacks[0].Outputs[?OutputKey==`FlareVoiceHandlerArn`].OutputValue' --output text) && \
 	ALIAS_ID=$$(echo "$$BOT_ALIAS_ARN" | grep -o '[^/]*$$') && \
-	echo "==> [3/7] Enabling Nova 2 Sonic S2S on bot locale..." && \
+	echo "==> [3/8] Enabling Nova 2 Sonic S2S on bot locale..." && \
 	aws lexv2-models update-bot-locale --bot-id "$$BOT_ID" --bot-version DRAFT --locale-id en_US \
 		--nlu-intent-confidence-threshold 0.4 \
 		--unified-speech-settings '{"speechFoundationModel":{"modelArn":"arn:aws:bedrock:$(REGION)::foundation-model/amazon.nova-2-sonic-v1:0"}}' \
 		--region $(REGION) > /dev/null && \
-	echo "==> [4/7] Building bot locale (this takes 30-90s)..." && \
+	echo "==> [4/8] Building bot locale (this takes 30-90s)..." && \
 	aws lexv2-models build-bot-locale --bot-id "$$BOT_ID" --bot-version DRAFT --locale-id en_US \
 		--region $(REGION) > /dev/null && \
 	for i in $$(seq 1 30); do \
@@ -150,7 +152,7 @@ endif
 		printf "    Building... ($$LSTATUS)\n"; \
 		sleep 10; \
 	done && \
-	echo "==> [5/7] Creating new bot version..." && \
+	echo "==> [5/8] Creating new bot version..." && \
 	NEW_VER=$$(aws lexv2-models create-bot-version --bot-id "$$BOT_ID" \
 		--bot-version-locale-specification '{"en_US":{"sourceBotVersion":"DRAFT"}}' \
 		--region $(REGION) --query 'botVersion' --output text) && \
@@ -163,14 +165,26 @@ endif
 		printf "    Waiting... ($$VSTATUS)\n"; \
 		sleep 10; \
 	done && \
-	echo "==> [6/7] Updating bot alias to version $$NEW_VER and wiring Connect..." && \
+	echo "==> [6/8] Updating bot alias to version $$NEW_VER and wiring Connect..." && \
 	aws lexv2-models update-bot-alias --bot-id "$$BOT_ID" --bot-alias-id "$$ALIAS_ID" \
 		--bot-alias-name live --bot-version "$$NEW_VER" \
 		--bot-alias-locale-settings '{"en_US":{"enabled":true,"codeHookSpecification":{"lambdaCodeHook":{"lambdaARN":"'"$$LAMBDA_ARN"'","codeHookInterfaceVersion":"1.0"}}}}' \
 		--region $(REGION) > /dev/null && \
 	aws connect associate-bot --instance-id "$$INSTANCE_ARN" \
-		--lex-v2-bot AliasArn="$$BOT_ALIAS_ARN" --region $(REGION) 2>/dev/null || true
-	@echo "==> [7/7] Updating base stack to enable voice..."
+		--lex-v2-bot AliasArn="$$BOT_ALIAS_ARN" --region $(REGION) 2>/dev/null || true && \
+	echo "==> [7/8] Writing Connect config to SSM..." && \
+	CONTACT_FLOW_ID=$$(aws connect list-contact-flows --instance-id "$$INSTANCE_ID" --region $(REGION) \
+		--query 'ContactFlowSummaryList[?contains(Name, `flare-incident-commander`)].Id' --output text) && \
+	PHONE_E164=$$(aws connect list-phone-numbers-v2 --target-arn "$$INSTANCE_ARN" --region $(REGION) \
+		--query 'ListPhoneNumbersSummaryList[0].PhoneNumber' --output text) && \
+	aws ssm put-parameter \
+		--name "/flare/$(STACK_NAME)/connect-config" \
+		--type String \
+		--value "{\"instance_id\":\"$$INSTANCE_ID\",\"contact_flow_arn\":\"$$CONTACT_FLOW_ID\",\"phone_number\":\"$$PHONE_E164\"}" \
+		--overwrite \
+		--region $(REGION) > /dev/null && \
+	echo "    SSM parameter /flare/$(STACK_NAME)/connect-config updated."
+	@echo "==> [8/8] Updating base stack to enable voice..."
 	@aws cloudformation deploy \
 		--template-file template.yaml \
 		--stack-name $(STACK_NAME) \
