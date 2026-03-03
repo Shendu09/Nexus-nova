@@ -265,20 +265,8 @@ Resources:
                 "ResponseValidation": {"ResponseType": "STRING_MAP"}
               },
               "Transitions": {
-                "NextAction": "briefing",
-                "Errors": [{"NextAction": "dc1", "ErrorType": "NoMatchingError"}],
-                "Conditions": []
-              }
-            },
-            {
-              "Identifier": "briefing",
-              "Type": "MessageParticipant",
-              "Parameters": {
-                "Text": "Hey, thanks for picking up. This is Flare, your triage assistant. $.External.rca_summary. I am here to help you investigate. What would you like to know?"
-              },
-              "Transitions": {
                 "NextAction": "lexbot",
-                "Errors": [{"NextAction": "lexbot", "ErrorType": "NoMatchingError"}],
+                "Errors": [{"NextAction": "dc1", "ErrorType": "NoMatchingError"}],
                 "Conditions": []
               }
             },
@@ -286,11 +274,13 @@ Resources:
               "Identifier": "lexbot",
               "Type": "ConnectParticipantWithLexBot",
               "Parameters": {
+                "Text": "Hey, this is Flare calling about an incident.",
                 "LexV2Bot": {
                   "AliasArn": "${FlareBotAlias.Arn}"
                 },
                 "LexSessionAttributes": {
-                  "incident_id": "$.Attributes.incident_id"
+                  "incident_id": "$.Attributes.incident_id",
+                  "rca_summary": "$.External.rca_summary"
                 }
               },
               "Transitions": {
@@ -339,7 +329,7 @@ Resources:
   FlareBot:
     Type: AWS::Lex::Bot
     Properties:
-      Name: !Sub "FlareTriage-${BaseStackName}"
+      Name: !Sub "FlareCommander-${BaseStackName}"
       Description: Voice triage assistant for Flare
       RoleArn: !GetAtt FlareLexRole.Arn
       IdleSessionTTLInSeconds: 300
