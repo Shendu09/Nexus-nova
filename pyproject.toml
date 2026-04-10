@@ -3,7 +3,7 @@ requires = ["setuptools>=68.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "flare"
+name = "nexus"
 version = "0.1.0"
 description = "AI-powered log triage for AWS using Cordon and Amazon Nova"
 requires-python = ">=3.12"
@@ -32,7 +32,7 @@ where = ["src"]
 
 [tool.mypy]
 strict = true
-packages = ["flare"]
+packages = ["nexus"]
 mypy_path = "src"
 
 [[tool.mypy.overrides]]
