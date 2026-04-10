@@ -1,2 +1,0 @@
-# Quickstart 19
-
