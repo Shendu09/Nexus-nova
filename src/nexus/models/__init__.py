@@ -8,5 +8,12 @@ This package contains deep learning models for:
 """
 
 from .autoencoder import LogAutoencoder
+from .lstm import LogAnomalyLSTM, LogAnomalyLSTMConfig, LogSequenceDataset, LogAnomalyLSTMScorer
 
-__all__ = ["LogAutoencoder"]
+__all__ = [
+    "LogAutoencoder",
+    "LogAnomalyLSTM",
+    "LogAnomalyLSTMConfig",
+    "LogSequenceDataset",
+    "LogAnomalyLSTMScorer",
+]
