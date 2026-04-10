@@ -8,6 +8,6 @@ RUN pip install --no-cache-dir --no-deps cordon
 RUN pip install --no-cache-dir \
     numpy litellm tqdm tokenizers boto3 genji
 
-COPY src/flare/ ${LAMBDA_TASK_ROOT}/flare/
+COPY src/nexus/ ${LAMBDA_TASK_ROOT}/nexus/
 
-CMD ["flare.handler.handler"]
+CMD ["nexus.handler.handler"]
