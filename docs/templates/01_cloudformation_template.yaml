@@ -1,0 +1,173 @@
+# CloudFormation Deployment Template
+
+## Complete SAM Template
+
+```yaml
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Description: Nexus Log Analysis and Voice Investigation System
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+  
+  LogGroup:
+    Type: String
+    Description: CloudWatch log group to analyze
+  
+  NotificationEmail:
+    Type: String
+    Description: Email for notifications
+
+Resources:
+  # Lambda Execution Role
+  NexusExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: NexusPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:GetLogEvents
+                  - logs:DescribeLogGroups
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*'
+              - Effect: Allow
+                Action:
+                  - dynamodb:*
+                Resource: !GetAtt SessionsTable.Arn
+              - Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - sns:Publish
+                Resource: !Ref NotificationTopic
+              - Effect: Allow
+                Action:
+                  - kendra:Query
+                Resource: '*'
+
+  # DynamoDB Tables
+  SessionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'nexus-sessions-${Environment}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: session_id
+          AttributeType: S
+        - AttributeName: created_at
+          AttributeType: N
+      KeySchema:
+        - AttributeName: session_id
+          KeyType: HASH
+        - AttributeName: created_at
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+  # SNS Topic
+  NotificationTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub 'nexus-notifications-${Environment}'
+
+  # Email Subscription
+  EmailSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Protocol: email
+      TopicArn: !Ref NotificationTopic
+      Endpoint: !Ref NotificationEmail
+
+  # Lambda Function
+  NexusFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'nexus-analyzer-${Environment}'
+      Runtime: python3.12
+      Handler: nexus.handler.handler
+      CodeUri: src/
+      Timeout: 600
+      MemorySize: 1024
+      Role: !GetAtt NexusExecutionRole.Arn
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+          LOG_GROUP: !Ref LogGroup
+          DYNAMODB_TABLE: !Ref SessionsTable
+          SNS_TOPIC_ARN: !Ref NotificationTopic
+      Layers:
+        - !Ref NexusLayer
+
+  # Lambda Layer for Dependencies
+  NexusLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: !Sub 'nexus-layer-${Environment}'
+      ContentUri: layers/
+      CompatibleRuntimes:
+        - python3.12
+
+  # CloudWatch Log Group
+  NexusLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/nexus-analyzer-${Environment}'
+      RetentionInDays: 30
+
+  # EventBridge Rule for Scheduled Invocation
+  ScheduledRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: Periodic Nexus log analysis
+      ScheduleExpression: rate(1 hour)
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt NexusFunction.Arn
+          Id: NexusTarget
+
+  # Permission for EventBridge to invoke Lambda
+  EventBridgePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref NexusFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt ScheduledRule.Arn
+
+Outputs:
+  FunctionArn:
+    Description: Lambda function ARN
+    Value: !GetAtt NexusFunction.Arn
+  
+  DynamoDBTable:
+    Description: DynamoDB sessions table
+    Value: !Ref SessionsTable
+  
+  SNSTopicArn:
+    Description: SNS notification topic
+    Value: !Ref NotificationTopic
+```
+
+## Deployment Command
+```bash
+sam deploy --guided
+```
