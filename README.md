@@ -1,6 +1,6 @@
-# Flare
+# Nexus
 
-AI-powered log triage and voice assistant for AWS. Flare pulls CloudWatch logs, identifies anomalous sections using [Cordon](https://github.com/calebevans/cordon), generates a root cause analysis with Amazon Nova, and optionally calls the on-call engineer to walk them through it by phone.
+AI-powered log triage and voice assistant for AWS. Nexus pulls CloudWatch logs, identifies anomalous sections using [Cordon](https://github.com/calebevans/cordon), generates a root cause analysis with Amazon Nova, and optionally calls the on-call engineer to walk them through it by phone.
 
 Built on three Amazon Nova foundation models: Nova Embeddings for semantic anomaly detection, Nova 2 Lite for reasoning, and Nova 2 Sonic for speech-to-speech voice conversation.
 
