@@ -1,0 +1,7 @@
+pre-commit:
+- ruff check --fix
+- mypy
+
+[[tool.mypy.overrides]]
+module = ["torch.*", "transformers.*", "prophet.*"]
+ignore_missing_imports = true
