@@ -1,0 +1,17 @@
+{
+  "type": "module",
+  "main": "novaml",
+  "types": "novaml",
+  "exports": {
+    ".": {
+      "import": "./novaml/__init__.py",
+      "require": "./novaml/__init__.py",
+      "types": "./novaml/__init__.py"
+    }
+  },
+  "keywords": ["aiops", "logs", "anomaly-detection", "llm"],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Shendu09/novaml.git"
+  }
+}
