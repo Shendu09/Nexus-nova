@@ -1,0 +1,27 @@
+version: "3.8"
+
+services:
+  novaml:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - LOG_LEVEL=INFO
+      - API_SECRET_KEY=dev-key-change-in-prod
+      - OLLAMA_BASE_URL=http://ollama:11434
+    depends_on:
+      - ollama
+    volumes:
+      - ./models:/home/novaml/.novaml/models
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_MODEL=mistral
+
+volumes:
+  ollama_data:
