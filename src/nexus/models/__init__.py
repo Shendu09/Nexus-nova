@@ -14,6 +14,7 @@ from .bert_classifier import (
     SeverityClassifierTrainer,
     SeverityPrediction
 )
+from .embeddings import SimCSEEmbedder, SimCSETrainer, LogEmbeddingStore
 
 try:
     from .lstm import LogAnomalyLSTM, LogAnomalyLSTMConfig, LogSequenceDataset, LogAnomalyLSTMScorer
