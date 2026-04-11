@@ -1,0 +1,49 @@
+"""
+ML Model Requirements for PyTorch and Deep Learning
+
+Add these to pyproject.toml [project.optional-dependencies.ml]
+"""
+
+# Deep Learning Framework
+torch>=2.0.0,<3.0.0  # PyTorch - include CPU-optimized build
+torchvision>=0.15.0  # Vision utilities
+torchaudio>=2.0.0    # Audio utilities
+
+# Model Libraries
+transformers>=4.30.0  # HuggingFace Transformers for BERT, etc.
+sentence-transformers>=2.2.0  # Sentence embeddings
+datasets>=2.10.0  # HuggingFace Dataset library
+
+# Training & Optimization
+pytorch-lightning>=2.0.0  # Training framework (optional, recommended)
+catalyst>=22.4  # Deep learning training framework
+accelerate>=0.20.0  # Distributed training utilities
+
+# Forecasting
+prophet>=1.1.0  # Facebook Prophet for time series
+statsmodels>=0.13.5  # Statistical models
+sktime>=0.13.0  # Time series ML
+
+# Reinforcement Learning
+gym>=0.26.0  # RL environments
+stable-baselines3>=1.8.0  # RL algorithms
+numpy>=1.23.0  # Numerical computing
+
+# Data & Utilities
+pandas>=2.0.0  # Data manipulation
+scikit-learn>=1.2.0  # ML algorithms
+scipy>=1.10.0  # Scientific computing
+tensorboard>=2.11.0  # Visualization
+
+# Development & Testing
+pytest>=7.3.0  # Testing framework
+pytest-cov>=4.0.0  # Coverage reporting
+hypothesis>=6.82.0  # Property-based testing
+
+# AWS Integration
+boto3>=1.26.0  # AWS SDK
+aioboto3>=12.0.0  # Async boto3
+
+# Monitoring & Logging
+wandb>=0.14.0  # Weights & Biases for experiment tracking (optional)
+ray[tune]>=2.3.0  # Hyperparameter tuning (optional)
